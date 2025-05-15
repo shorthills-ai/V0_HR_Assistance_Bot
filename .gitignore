@@ -1,4 +1,3 @@
 venv
 V1
-.streamlit/secrets.toml
-.hrbot
+secret.txt

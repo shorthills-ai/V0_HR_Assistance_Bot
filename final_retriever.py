@@ -12,12 +12,16 @@ class BooleanSearchParser:
         self.quoted_phrases = {}
         self.placeholder_counter = 0
 
-    def preprocess_query(self, query: str) -> str:
-        """Extract quoted phrases, normalize operators, insert implicit ANDs, and uppercase boolean keywords."""
-        # Step 1: normalize boolean keywords (case-insensitive) to uppercase
-        query = re.sub(r"\b(and|or|not)\b", lambda m: m.group(1).upper(), query, flags=re.IGNORECASE)
+    def normalize_operator(self, token: str) -> str:
+        """Normalize boolean operators to uppercase regardless of input case."""
+        token_upper = token.upper()
+        if token_upper in {"AND", "OR", "NOT"}:
+            return token_upper
+        return token
 
-        # Step 2: extract and replace quoted phrases (handles single or double quotes)
+    def preprocess_query(self, query: str) -> str:
+        """Extract quoted phrases, normalize operators, insert implicit ANDs."""
+        # Step 1: extract and replace quoted phrases (handles single or double quotes)
         def replace_quoted(match):
             phrase = match.group(1) or match.group(2)
             placeholder = f"QUOTED_PHRASE_{self.placeholder_counter}"
@@ -25,28 +29,25 @@ class BooleanSearchParser:
             self.placeholder_counter += 1
             return placeholder
 
-
         text = re.sub(
                 r"\"([^\\\"]+)\"|'([^']+)'",
                 replace_quoted,
                 query
             )
 
-
-        # Step 3: split into tokens (operators, parentheses, placeholders, words)
+        # Step 2: split into tokens (operators, parentheses, placeholders, words)
         tokens = re.findall(r"\(|\)|QUOTED_PHRASE_\d+|\w+", text)
         result = []
-        ops = {"AND", "OR", "NOT"}
+        ops = {"and", "or", "not"}  # Keep operators lowercase for now
 
-        # Step 4: insert implicit AND between adjacent bare terms
+        # Step 3: insert implicit AND between adjacent bare terms
         for i, tok in enumerate(tokens):
-            tok_norm = tok.upper() if tok.upper() in ops else tok
-            result.append(tok_norm)
+            result.append(tok)
             if i < len(tokens) - 1:
                 nxt = tokens[i+1]
-                if tok_norm not in ops and tok_norm not in ['(', ')'] and \
-                   nxt.upper() not in ops and nxt not in ['(', ')']:
-                    result.append('AND')
+                if tok.lower() not in ops and tok not in ['(', ')'] and \
+                   nxt.lower() not in ops and nxt not in ['(', ')']:
+                    result.append('and')  # Use lowercase 'and' for implicit AND
 
         return ' '.join(result)
 
@@ -55,8 +56,12 @@ class BooleanSearchParser:
         self.quoted_phrases = {}
         self.placeholder_counter = 0
 
-        # Preprocess (handles flexible case, implicit ANDs, and uppercases keywords)
+        # Preprocess (handles quoted phrases and implicit ANDs)
         processed = self.preprocess_query(query)
+        
+        # Convert boolean operators to uppercase just before parsing
+        processed = re.sub(r'\b(and|or|not)\b', lambda m: m.group(1).upper(), processed, flags=re.IGNORECASE)
+        
         # Finally parse into Boolean expression tree
         return self.algebra.parse(processed)
 
@@ -184,6 +189,69 @@ def evaluate_expression(expr, text, quoted_phrases=None):
     
     return False
 
+def extract_search_terms(expr, quoted_phrases=None):
+    """Extract all search terms from the boolean expression for highlighting."""
+    quoted_phrases = quoted_phrases or {}
+    terms = set()
+    
+    if isinstance(expr, Symbol):
+        term = str(expr.obj).lower()
+        if term.startswith("QUOTED_PHRASE_") and term in quoted_phrases:
+            terms.add(quoted_phrases[term].lower())
+        else:
+            terms.add(term)
+    elif isinstance(expr, (AND, OR)):
+        for arg in expr.args:
+            terms.update(extract_search_terms(arg, quoted_phrases))
+    
+    return terms
+
+def highlight_text(text: str, matched_terms: set) -> str:
+    """Highlight matched terms in text using HTML while preserving original case."""
+    if not matched_terms or not text:
+        return text
+    
+    # Sort terms by length (longest first) to avoid partial matches
+    sorted_terms = sorted(matched_terms, key=len, reverse=True)
+    
+    # Create a copy of the text to modify
+    highlighted_text = text
+    
+    # Replace each term with its highlighted version
+    for term in sorted_terms:
+        # Escape special characters in the term for regex
+        escaped_term = re.escape(term)
+        # Use word boundaries to match whole words only, case-insensitive
+        pattern = r'\b' + escaped_term + r'\b'
+        
+        # Find all matches with their original case
+        matches = list(re.finditer(pattern, highlighted_text, flags=re.IGNORECASE))
+        
+        # Process matches in reverse order to maintain correct positions
+        for match in reversed(matches):
+            original_text = match.group(0)  # Get the matched text with original case
+            highlighted_text = highlighted_text[:match.start()] + \
+                             f'<span style="background-color: #ffeb3b; font-weight: bold;">{original_text}</span>' + \
+                             highlighted_text[match.end():]
+    
+    return highlighted_text
+
+def highlight_dict_values(d: dict, matched_terms: set) -> dict:
+    """Recursively highlight text in dictionary values."""
+    result = {}
+    for key, value in d.items():
+        if isinstance(value, str):
+            result[key] = highlight_text(value, matched_terms)
+        elif isinstance(value, dict):
+            result[key] = highlight_dict_values(value, matched_terms)
+        elif isinstance(value, list):
+            result[key] = [highlight_text(str(item), matched_terms) if isinstance(item, str) 
+                          else highlight_dict_values(item, matched_terms) if isinstance(item, dict)
+                          else item for item in value]
+        else:
+            result[key] = value
+    return result
+
 def display_json(data):
     if "_id" in data:
         del data["_id"]
@@ -240,33 +308,23 @@ def main():
         st.image("https://img.icons8.com/color/96/000000/find-matching-job.png", width=80)
         st.title("HR Bot Resume Search")
         
-        st.markdown("### Search Filters")
-        search_query = st.text_input("🧠 Enter your search query:", placeholder="e.g., Python AND MachineLearning")
+        st.markdown("### Search")
+        search_query = st.text_input("Enter your search query:", placeholder="e.g., Python AND MachineLearning")
         
-        with st.expander("ℹ️ How to Search ??"):
+        with st.expander("Search Tips"):
             st.markdown("""
-            ### 🔍 Boolean Search Tips
-            - **Simple keyword**: Type keywords directly like `Python`
-            - **AND operator**: Match multiple skills: `Python AND Django`
-            - **OR operator**: Match alternatives: `JavaScript OR TypeScript`
-            - **Grouped logic**: Combine filters using parentheses:  
-            e.g., `(Python OR Java) AND (AWS OR Azure)`
-            - **Multi-word skills** (like 2+ word technologies):
-                - Write them without spaces: `MachineLearning`, `HuggingFace`
-                - OR use Boolean grouping: `(Machine AND Learning)`, `(Hugging AND Face)`
-                - ✅ All the following are treated the same:
-                - `MachineLearning`
-                - `machinelearning`
-                - `(Machine AND Learning)`
-                - `HuggingFace`, `huggingface`, `(Hugging AND Face)`
-
-            💡 _Avoid spaces between multi-word skills unless using Boolean logic explicitly._
+            - **Simple keyword**: `Python`
+            - **AND operator**: `Python AND Django`
+            - **OR operator**: `JavaScript OR TypeScript`
+            - **Grouped logic**: `(Python OR Java) AND (AWS OR Azure)`
+            - **Multi-word skills**: `MachineLearning` or `HuggingFace`
             """)
-
         
         st.divider()
-        st.markdown("### About")
-        st.markdown("**Resume Search** helps you quickly find the most relevant candidates by matching specific keywords and phrases in their profiles. It supports powerful **Boolean search capabilities**, allowing you to combine skills, exclude terms, or group keywords for highly targeted filtering.")
+        st.markdown("""
+        **About**  
+        Find relevant candidates by matching keywords and phrases in their profiles. Supports Boolean search for precise filtering.
+        """)
 
     # Main content
     st.title("🔎 Looking for some candidates?")
@@ -289,7 +347,6 @@ def main():
             ### 💡 Example Queries
             - `Python AND (Django OR Flask)`
             - `JavaScript AND React`
-            - `"Machine Learning" AND (Python OR R)`
             - `AWS OR Azure`
             """)
         return
@@ -341,6 +398,13 @@ def main():
             
             if evaluate_expression(parsed_query, norm_text, bsp.quoted_phrases):
                 unique_matching_docs[doc_id] = doc
+                # Extract search terms for highlighting
+                search_terms = extract_search_terms(parsed_query, bsp.quoted_phrases)
+                st.session_state[f"matched_terms_{doc_id}"] = search_terms
+                
+                # Pre-highlight the entire document
+                highlighted_doc = highlight_dict_values(doc, search_terms)
+                st.session_state[f"highlighted_doc_{doc_id}"] = highlighted_doc
         except Exception as e:
             st.warning(f"⚠️ Error processing document {doc.get('_id')}: {e}")
         progress_bar.progress((idx + 1) / len(docs))
@@ -360,13 +424,21 @@ def main():
         with tab1:
             # Card view
             for doc in matching_docs_list:
+                doc_id = str(doc.get('_id'))
+                matched_terms = st.session_state.get(f"matched_terms_{doc_id}", set())
+                
                 with st.container():
+                    # Highlight the name and contact info
+                    name = highlight_text(doc.get('name', 'Unknown Candidate'), matched_terms)
+                    email = highlight_text(doc.get('email', 'No email provided'), matched_terms)
+                    phone = highlight_text(doc.get('phone', 'No phone provided'), matched_terms)
+                    
                     st.markdown(f"""
                     <div class="card">
-                        <div class="candidate-name">{doc.get('name', 'Unknown Candidate')}</div>
+                        <div class="candidate-name">{name}</div>
                         <div class="contact-info">
-                            📧 {doc.get('email', 'No email provided')} | 
-                            📱 {doc.get('phone', 'No phone provided')}
+                            📧 {email} | 
+                            📱 {phone}
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
@@ -382,7 +454,8 @@ def main():
                                 skill_text += "..."
                         else:
                             skill_text = str(skills)
-                        col1.markdown(f"**Skills**: {skill_text}")
+                        highlighted_skills = highlight_text(skill_text, matched_terms)
+                        col1.markdown(f"**Skills**: {highlighted_skills}", unsafe_allow_html=True)
                     
                     # View details button with unique key
                     button_key = f"view_{doc.get('_id')}"
@@ -396,101 +469,102 @@ def main():
                             
                             with tabs[0]:
                                 # Formatted structured view
-                                st.subheader(f"{doc.get('name', 'Candidate')} - Profile")
+                                doc_id = str(doc.get('_id'))
+                                matched_terms = st.session_state.get(f"matched_terms_{doc_id}", set())
+                                highlighted_doc = st.session_state.get(f"highlighted_doc_{doc_id}", doc)
+                                
+                                st.subheader(f"{highlighted_doc.get('name', 'Candidate')} - Profile")
                                 
                                 # Basic information
                                 st.markdown("### 👤 Basic Information")
                                 col1, col2 = st.columns(2)
-                                col1.markdown(f"**Name:** {doc.get('name', 'N/A')}")
-                                col1.markdown(f"**Email:** {doc.get('email', 'N/A')}")
-                                col2.markdown(f"**Phone:** {doc.get('phone', 'N/A')}")
-                                col2.markdown(f"**Location:** {doc.get('location', 'N/A')}")
+                                
+                                col1.markdown(f"**Name:** {highlighted_doc.get('name', 'N/A')}", unsafe_allow_html=True)
+                                col1.markdown(f"**Email:** {highlighted_doc.get('email', 'N/A')}", unsafe_allow_html=True)
+                                col2.markdown(f"**Phone:** {highlighted_doc.get('phone', 'N/A')}", unsafe_allow_html=True)
+                                col2.markdown(f"**Location:** {highlighted_doc.get('location', 'N/A')}", unsafe_allow_html=True)
                                 
                                 # Education
-                                if 'education' in doc:
+                                if 'education' in highlighted_doc:
                                     st.markdown("### 🎓 Education")
-                                    if isinstance(doc['education'], list):
-                                        for edu in doc['education']:
+                                    if isinstance(highlighted_doc['education'], list):
+                                        for edu in highlighted_doc['education']:
                                             if isinstance(edu, dict):
-                                                st.markdown(f"**{edu.get('degree', 'Degree')}** - {edu.get('institution', 'Institution')}")
-                                                st.markdown(f"{edu.get('start_date', '')} - {edu.get('end_date', '')} | {edu.get('location', '')}")
+                                                st.markdown(f"**{edu.get('degree', 'Degree')}** - {edu.get('institution', 'Institution')}", unsafe_allow_html=True)
+                                                st.markdown(f"{edu.get('start_date', '')} - {edu.get('end_date', '')} | {edu.get('location', '')}", unsafe_allow_html=True)
                                             else:
-                                                st.markdown(f"- {edu}")
+                                                st.markdown(f"- {edu}", unsafe_allow_html=True)
                                     else:
-                                        st.markdown(f"- {doc['education']}")
+                                        st.markdown(f"- {highlighted_doc['education']}", unsafe_allow_html=True)
                                 
                                 # Experience
-                                if 'experience' in doc:
+                                if 'experience' in highlighted_doc:
                                     st.markdown("### 💼 Experience")
-                                    if isinstance(doc['experience'], list):
-                                        for exp in doc['experience']:
+                                    if isinstance(highlighted_doc['experience'], list):
+                                        for exp in highlighted_doc['experience']:
                                             if isinstance(exp, dict):
-                                                st.markdown(f"**{exp.get('title', 'Role')}** at {exp.get('company', 'Company')}")
-                                                st.markdown(f"{exp.get('start_date', '')} - {exp.get('end_date', '')} | {exp.get('location', '')}")
-                                                st.markdown(f"{exp.get('description', '')}")
+                                                st.markdown(f"**{exp.get('title', 'Role')}** at {exp.get('company', 'Company')}", unsafe_allow_html=True)
+                                                st.markdown(f"{exp.get('start_date', '')} - {exp.get('end_date', '')} | {exp.get('location', '')}", unsafe_allow_html=True)
+                                                st.markdown(f"{exp.get('description', '')}", unsafe_allow_html=True)
                                             else:
-                                                st.markdown(f"- {exp}")
+                                                st.markdown(f"- {exp}", unsafe_allow_html=True)
                                     else:
-                                        st.markdown(f"- {doc['experience']}")
+                                        st.markdown(f"- {highlighted_doc['experience']}", unsafe_allow_html=True)
 
                                 # Projects
-                                if 'projects' in doc:
+                                if 'projects' in highlighted_doc:
                                     st.markdown("### 🛠️ Projects")
-                                    if isinstance(doc['projects'], list):
-                                        for proj in doc['projects']:
+                                    if isinstance(highlighted_doc['projects'], list):
+                                        for proj in highlighted_doc['projects']:
                                             if isinstance(proj, dict):
-                                                st.markdown(f"**{proj.get('title', 'Project')}**")
-                                                st.markdown(f"{proj.get('description', '')}")
+                                                st.markdown(f"**{proj.get('title', 'Project')}**", unsafe_allow_html=True)
+                                                st.markdown(f"{proj.get('description', '')}", unsafe_allow_html=True)
                                             else:
-                                                st.markdown(f"- {proj}")
+                                                st.markdown(f"- {proj}", unsafe_allow_html=True)
                                     else:
-                                        st.markdown(f"- {doc['projects']}")
+                                        st.markdown(f"- {highlighted_doc['projects']}", unsafe_allow_html=True)
 
-                                
                                 # Skills
-                                if 'skills' in doc:
+                                if 'skills' in highlighted_doc:
                                     st.markdown("### 🛠️ Skills")
-                                    if isinstance(doc['skills'], list):
-                                        st.markdown(", ".join(doc['skills']))
+                                    if isinstance(highlighted_doc['skills'], list):
+                                        st.markdown(", ".join(highlighted_doc['skills']), unsafe_allow_html=True)
                                     else:
-                                        st.markdown(doc['skills'])
-                                
-                                
+                                        st.markdown(highlighted_doc['skills'], unsafe_allow_html=True)
 
                                 # Certifications
-                                if 'certifications' in doc:
+                                if 'certifications' in highlighted_doc:
                                     st.markdown("### 📜 Certifications")
-                                    if isinstance(doc['certifications'], list):
-                                        for cert in doc['certifications']:
+                                    if isinstance(highlighted_doc['certifications'], list):
+                                        for cert in highlighted_doc['certifications']:
                                             if isinstance(cert, dict):
-                                                st.markdown(f"**{cert.get('title', 'Certification')}** - {cert.get('issuer', '')} ({cert.get('year', '')})")
+                                                st.markdown(f"**{cert.get('title', 'Certification')}** - {cert.get('issuer', '')} ({cert.get('year', '')})", unsafe_allow_html=True)
                                                 if 'link' in cert:
                                                     st.markdown(f"[🔗 View Certificate]({cert['link']})")
                                             else:
-                                                st.markdown(f"- {cert}")
+                                                st.markdown(f"- {cert}", unsafe_allow_html=True)
                                     else:
-                                        st.markdown(f"- {doc['certifications']}")
+                                        st.markdown(f"- {highlighted_doc['certifications']}", unsafe_allow_html=True)
 
                                 # Languages
-                                if 'languages' in doc and doc['languages']:
+                                if 'languages' in highlighted_doc and highlighted_doc['languages']:
                                     st.markdown("### 🌍 Languages")
-                                    if isinstance(doc['languages'], list):
-                                        st.markdown(", ".join(doc['languages']))
+                                    if isinstance(highlighted_doc['languages'], list):
+                                        st.markdown(", ".join(highlighted_doc['languages']), unsafe_allow_html=True)
                                     else:
-                                        st.markdown(doc['languages'])
+                                        st.markdown(highlighted_doc['languages'], unsafe_allow_html=True)
 
                                 # Social Profiles
-                                if 'social_profiles' in doc:
+                                if 'social_profiles' in highlighted_doc:
                                     st.markdown("### 🌐 Social Profiles")
-                                    if isinstance(doc['social_profiles'], list):
-                                        for profile in doc['social_profiles']:
+                                    if isinstance(highlighted_doc['social_profiles'], list):
+                                        for profile in highlighted_doc['social_profiles']:
                                             if isinstance(profile, dict):
-                                                st.markdown(f"[{profile.get('platform', 'Profile')}]({profile.get('link', '#')})")
+                                                st.markdown(f"[{profile.get('platform', 'Profile')}]({profile.get('link', '#')})", unsafe_allow_html=True)
                                             else:
-                                                st.markdown(f"- {profile}")
+                                                st.markdown(f"- {profile}", unsafe_allow_html=True)
                                     else:
-                                        st.markdown(f"- {doc['social_profiles']}")
-
+                                        st.markdown(f"- {highlighted_doc['social_profiles']}", unsafe_allow_html=True)
                             
                             with tabs[1]:
                                 # Raw JSON view with pretty formatting
