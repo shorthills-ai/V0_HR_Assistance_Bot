@@ -262,7 +262,7 @@ def display_json(data):
 def main():
     st.set_page_config(
         page_title="HR Bot Resume Search", 
-        page_icon="📄", 
+        page_icon=None, 
         layout="wide",
         initial_sidebar_state="expanded"
     )
@@ -305,7 +305,6 @@ def main():
     
     # Sidebar for search controls
     with st.sidebar:
-        st.image("https://img.icons8.com/color/96/000000/find-matching-job.png", width=80)
         st.title("HR Bot Resume Search")
         
         st.markdown("### Search")
@@ -327,16 +326,16 @@ def main():
         """)
 
     # Main content
-    st.title("🔎 Looking for some candidates?")
+    st.title("Looking for some candidates?")
     
     if not search_query:
-        st.info("👈 Enter a search query in the sidebar to begin searching.")
+        st.info("Enter a search query in the sidebar to begin searching.")
         
         # Sample placeholders when no search is performed
         col1, col2 = st.columns(2)
         with col1:
             st.markdown("""
-            ### 🚀 Features
+            ### Features
             - **Boolean Logic**: Complex search queries
             - **Fast Search**: Optimized algorithm
             - **Detailed View**: See complete candidate profiles
@@ -344,7 +343,7 @@ def main():
             """)
         with col2:
             st.markdown("""
-            ### 💡 Example Queries
+            ### Example Queries
             - `Python AND (Django OR Flask)`
             - `JavaScript AND React`
             - `AWS OR Azure`
@@ -357,7 +356,7 @@ def main():
         try:
             parsed_query = bsp.parse_query(search_query)
         except Exception as e:
-            st.error(f"❌ Error parsing query: {e}")
+            st.error(f"Error parsing query: {e}")
             return
     else:
         parsed_query = Symbol(search_query.lower())
@@ -368,13 +367,13 @@ def main():
             client = MongoClient(config.MONGO_URI)
             coll = client[config.DB_NAME][config.COLLECTION_NAME]
             docs = list(coll.find({}))
-            st.success(f"📁 Loaded {len(docs)} resumes from database")
+            st.success(f"Loaded {len(docs)} resumes from database")
     except Exception as e:
-        st.error(f"❌ Failed to load resumes: {e}")
+        st.error(f"Failed to load resumes: {e}")
         return
 
     # Search resumes
-    st.subheader("🔍 Searching resumes...")
+    st.subheader("Searching resumes...")
     progress_bar = st.progress(0)
     
     # Store unique documents using a dictionary with _id as key
@@ -406,7 +405,7 @@ def main():
                 highlighted_doc = highlight_dict_values(doc, search_terms)
                 st.session_state[f"highlighted_doc_{doc_id}"] = highlighted_doc
         except Exception as e:
-            st.warning(f"⚠️ Error processing document {doc.get('_id')}: {e}")
+            st.warning(f"Error processing document {doc.get('_id')}: {e}")
         progress_bar.progress((idx + 1) / len(docs))
 
     progress_bar.empty()
@@ -416,7 +415,7 @@ def main():
 
     # Display results
     if matching_docs_list:
-        st.markdown(f"<div class='result-count'>✅ Found {len(matching_docs_list)} matching candidates</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='result-count'>Found {len(matching_docs_list)} matching candidates</div>", unsafe_allow_html=True)
         
         # Create tabs for different views
         tab1, tab2 = st.tabs(["Card View", "Table View"])
@@ -437,8 +436,8 @@ def main():
                     <div class="card">
                         <div class="candidate-name">{name}</div>
                         <div class="contact-info">
-                            📧 {email} | 
-                            📱 {phone}
+                            {email} | 
+                            {phone}
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
@@ -464,7 +463,7 @@ def main():
                     
                     # Show details if button was clicked
                     if st.session_state.get(f"show_details_{doc.get('_id')}", False):
-                        with st.expander("📄 Full Resume Details", expanded=True):
+                        with st.expander("Full Resume Details", expanded=True):
                             tabs = st.tabs(["Formatted View", "JSON View"])
                             
                             with tabs[0]:
@@ -476,7 +475,7 @@ def main():
                                 st.subheader(f"{highlighted_doc.get('name', 'Candidate')} - Profile")
                                 
                                 # Basic information
-                                st.markdown("### 👤 Basic Information")
+                                st.markdown("### Basic Information")
                                 col1, col2 = st.columns(2)
                                 
                                 col1.markdown(f"**Name:** {highlighted_doc.get('name', 'N/A')}", unsafe_allow_html=True)
@@ -486,7 +485,7 @@ def main():
                                 
                                 # Education
                                 if 'education' in highlighted_doc:
-                                    st.markdown("### 🎓 Education")
+                                    st.markdown("### Education")
                                     if isinstance(highlighted_doc['education'], list):
                                         for edu in highlighted_doc['education']:
                                             if isinstance(edu, dict):
@@ -499,7 +498,7 @@ def main():
                                 
                                 # Experience
                                 if 'experience' in highlighted_doc:
-                                    st.markdown("### 💼 Experience")
+                                    st.markdown("### Experience")
                                     if isinstance(highlighted_doc['experience'], list):
                                         for exp in highlighted_doc['experience']:
                                             if isinstance(exp, dict):
@@ -513,7 +512,7 @@ def main():
 
                                 # Projects
                                 if 'projects' in highlighted_doc:
-                                    st.markdown("### 🛠️ Projects")
+                                    st.markdown("### Projects")
                                     if isinstance(highlighted_doc['projects'], list):
                                         for proj in highlighted_doc['projects']:
                                             if isinstance(proj, dict):
@@ -526,7 +525,7 @@ def main():
 
                                 # Skills
                                 if 'skills' in highlighted_doc:
-                                    st.markdown("### 🛠️ Skills")
+                                    st.markdown("### Skills")
                                     if isinstance(highlighted_doc['skills'], list):
                                         st.markdown(", ".join(highlighted_doc['skills']), unsafe_allow_html=True)
                                     else:
@@ -534,13 +533,13 @@ def main():
 
                                 # Certifications
                                 if 'certifications' in highlighted_doc:
-                                    st.markdown("### 📜 Certifications")
+                                    st.markdown("### Certifications")
                                     if isinstance(highlighted_doc['certifications'], list):
                                         for cert in highlighted_doc['certifications']:
                                             if isinstance(cert, dict):
                                                 st.markdown(f"**{cert.get('title', 'Certification')}** - {cert.get('issuer', '')} ({cert.get('year', '')})", unsafe_allow_html=True)
                                                 if 'link' in cert:
-                                                    st.markdown(f"[🔗 View Certificate]({cert['link']})")
+                                                    st.markdown(f"[View Certificate]({cert['link']})")
                                             else:
                                                 st.markdown(f"- {cert}", unsafe_allow_html=True)
                                     else:
@@ -548,7 +547,7 @@ def main():
 
                                 # Languages
                                 if 'languages' in highlighted_doc and highlighted_doc['languages']:
-                                    st.markdown("### 🌍 Languages")
+                                    st.markdown("### Languages")
                                     if isinstance(highlighted_doc['languages'], list):
                                         st.markdown(", ".join(highlighted_doc['languages']), unsafe_allow_html=True)
                                     else:
@@ -556,7 +555,7 @@ def main():
 
                                 # Social Profiles
                                 if 'social_profiles' in highlighted_doc:
-                                    st.markdown("### 🌐 Social Profiles")
+                                    st.markdown("### Social Profiles")
                                     if isinstance(highlighted_doc['social_profiles'], list):
                                         for profile in highlighted_doc['social_profiles']:
                                             if isinstance(profile, dict):
@@ -592,7 +591,7 @@ def main():
             
             st.dataframe(table_data, use_container_width=True)
     else:
-        st.info("🔎 No resumes matched your search query. Try adjusting your terms.")
+        st.info("No resumes matched your search query. Try adjusting your terms.")
         st.markdown("""
         **Tips to improve results:**
         - Use broader terms
