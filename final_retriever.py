@@ -4,6 +4,45 @@ import streamlit as st
 from pymongo import MongoClient
 from boolean.boolean import BooleanAlgebra, Symbol, AND, OR
 import config
+import openai
+
+import streamlit as st
+
+AZURE_OPENAI_API_KEY = st.secrets["azure_openai"]["api_key"]
+AZURE_OPENAI_ENDPOINT = st.secrets["azure_openai"]["endpoint"]
+AZURE_OPENAI_DEPLOYMENT = st.secrets["azure_openai"]["deployment"]
+AZURE_OPENAI_API_VERSION = st.secrets["azure_openai"]["api_version"]
+
+# Create a reusable OpenAI client instance (Azure)
+openai_client = openai.AzureOpenAI(
+    api_key=AZURE_OPENAI_API_KEY,
+    api_version=AZURE_OPENAI_API_VERSION,
+    azure_endpoint=AZURE_OPENAI_ENDPOINT
+)
+def convert_natural_language_to_boolean(nl_query):
+    prompt = f"""Convert the following natural language query into a Boolean search query.
+        Example 1:
+        Input: Show me candidates skilled in Java and Spring Boot
+        Output: java and springboot
+
+        Example 2:
+        Input: Find someone who knows Python or data science
+        Output: python or datascience
+
+        Example 3:
+        Input: I want profiles with either machine learning or deep learning but not statistics
+        Output: (machinelearning or deeplearning) and not statistics
+
+        Now, convert this:
+        Input: {nl_query}
+        Output:"""
+
+    response = openai_client.chat.completions.create(
+        model=AZURE_OPENAI_DEPLOYMENT,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0
+    )
+    return response.choices[0].message.content.strip()
 
 
 class BooleanSearchParser:
@@ -11,6 +50,9 @@ class BooleanSearchParser:
         self.algebra = BooleanAlgebra()
         self.quoted_phrases = {}
         self.placeholder_counter = 0
+
+    def convert_nl_query(self, query):
+        return convert_natural_language_to_boolean(query)
 
     def normalize_operator(self, token: str) -> str:
         """Normalize boolean operators to uppercase regardless of input case."""
@@ -257,7 +299,13 @@ def display_json(data):
         del data["_id"]
     
     st.json(data)
-
+def normalize_boolean_operators(query):
+    # Replace lowercase boolean operators with uppercase versions (whole words only)
+    query = re.sub(r'\band\b', 'AND', query, flags=re.IGNORECASE)
+    query = re.sub(r'\bor\b', 'OR', query, flags=re.IGNORECASE)
+    query = re.sub(r'\bnot\b', 'NOT', query, flags=re.IGNORECASE)
+    return query
+# Main Streamlit App
 # Main Streamlit App
 def main():
     st.set_page_config(
@@ -306,10 +354,6 @@ def main():
     # Sidebar for search controls
     with st.sidebar:
         st.title("HR Bot Resume Search")
-        
-        st.markdown("### Search")
-        search_query = st.text_input("Enter your search query:", placeholder="e.g., Python AND MachineLearning")
-        
         with st.expander("Search Tips"):
             st.markdown("""
             - **Simple keyword**: `Python`
@@ -318,6 +362,13 @@ def main():
             - **Grouped logic**: `(Python OR Java) AND (AWS OR Azure)`
             - **Multi-word skills**: `MachineLearning` or `HuggingFace`
             """)
+        
+        st.markdown("### Search Filters")
+        search_query = st.text_input("🧠 Enter your search query:", placeholder="e.g., Python AND MachineLearning")
+        
+        if search_query:
+            search_query = convert_natural_language_to_boolean(search_query)
+            search_query = normalize_boolean_operators(search_query)
         
         st.divider()
         st.markdown("""
@@ -432,15 +483,13 @@ def main():
                     email = highlight_text(doc.get('email', 'No email provided'), matched_terms)
                     phone = highlight_text(doc.get('phone', 'No phone provided'), matched_terms)
                     
-                    st.markdown(f"""
-                    <div class="card">
-                        <div class="candidate-name">{name}</div>
-                        <div class="contact-info">
-                            {email} | 
-                            {phone}
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    st.markdown(
+                        f'<div class="card">'
+                        f'<div class="candidate-name">{name}</div>'
+                        f'<div class="contact-info">{email} | {phone}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
                     
                     col1, col2 = st.columns([4, 1])
                     
@@ -465,7 +514,7 @@ def main():
                     if st.session_state.get(f"show_details_{doc.get('_id')}", False):
                         with st.expander("Full Resume Details", expanded=True):
                             tabs = st.tabs(["Formatted View", "JSON View"])
-                            
+                        
                             with tabs[0]:
                                 # Formatted structured view
                                 doc_id = str(doc.get('_id'))
@@ -606,3 +655,6 @@ def run_retriever():
         # Initialize any other session state variables here
     
     main()
+
+
+
