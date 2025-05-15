@@ -249,7 +249,6 @@ def validate_and_reprocess_resumes(uploaded_files):
 
             # Check if 'name' is missing
             if not resume_data.get("name") or len(resume_data.get("name").split()[0]) < 2:
-                st.warning(f"⚠️ Missing 'name' in {file_path.name}. Reprocessing...")
                 reprocessed_count += 1
 
                 # Find the original file in uploaded files
@@ -301,7 +300,7 @@ def validate_and_reprocess_resumes(uploaded_files):
         except Exception as e:
             st.error(f"Error validating {file_path.name}: {e}")
 
-    st.write(f"🔄 Reprocessed {reprocessed_count} resumes with missing 'name'.")
+    st.write(f"🔄 Reprocessed {reprocessed_count} resumes")
 
 # Create temp directories for processing
 temp_dir = Path(tempfile.gettempdir()) / "resume_processor"
@@ -490,10 +489,32 @@ elif page == "Database Management":
                             key="resume_selector"
                         )
                         
+# ...existing code...
+
                         if selected_resume_option and "No resumes found" not in selected_resume_option:
                             selected_resume = st.session_state.resume_display_map.get(selected_resume_option)
                             if selected_resume:
-                                st.json(selected_resume)
+                                # Display resume details in a visually appealing format
+                                st.markdown("---")
+                                col1, col2 = st.columns([1, 2])
+                                with col1:
+                                    st.markdown(f"### 👤 {selected_resume.get('name', 'Unknown Name')}")
+                                    st.markdown(f"📧 **Email:** {selected_resume.get('email', 'No email')}")
+                                    st.markdown(f"📱 **Phone:** {selected_resume.get('phone', 'No phone')}")
+                                    st.markdown(f"📍 **Location:** {selected_resume.get('location', 'No location')}")
+                                    if selected_resume.get('skills'):
+                                        st.markdown("### 🛠️ Skills")
+                                        st.write(", ".join(selected_resume.get('skills', [])))
+                                with col2:
+                                    if selected_resume.get('experience'):
+                                        st.markdown("### 💼 Experience")
+                                        for exp in selected_resume.get('experience', [])[:2]:
+                                            st.markdown(f"""
+                                            **{exp.get('title', 'N/A')}** at {exp.get('company', 'N/A')}
+                                            *{exp.get('duration', 'N/A')}*
+                                            """)
+                                if st.checkbox("Show Raw JSON"):
+                                    st.json(selected_resume)
 
                                 # Add delete button with confirmation logic
                                 if "delete_confirmation" not in st.session_state:
@@ -529,7 +550,7 @@ elif page == "Database Management":
             with col1:
                 search_field = st.selectbox(
                 "Search Field", 
-                ["name", "email", "skills", "experience.company", "education.institution"]
+                ["Name","Employee_ID","Location", "College"]
             )
             with col2:
                 search_value = st.text_input("Search Value")
@@ -537,8 +558,18 @@ elif page == "Database Management":
             if st.button("🔍 Search", use_container_width=True):
                 if search_value:
                     query = {}
-                    if search_field == "skills":
-                        query = {search_field: {"$in": [search_value]}}
+                    if search_field == "Name":
+                        search_field= "name"
+                        query = {search_field: {"$regex": search_value, "$options": "i"}}
+                    if search_field == "Employee_ID":
+                        search_field = "id"
+                        query = {search_field: {"$regex": search_value, "$options": "i"}}
+                    if search_field == "Location":
+                        search_field = "location"
+                        query = {search_field: {"$regex": search_value, "$options": "i"}}
+                    if search_field == "College":
+                        search_field = "education.institution"
+                        query = {search_field: {"$regex": f"(^|\\s){search_value}(\\s|$)", "$options": "i"}}
                     elif "." in search_field:
                         query = {search_field: {"$regex": search_value, "$options": "i"}}
                     else:
@@ -562,8 +593,7 @@ elif page == "Database Management":
                             st.warning("No matching resumes found")
                 else:
                     st.warning("Please enter a search value")
-            
-            # Display search results if available
+             
             if "search_options" in st.session_state and st.session_state.search_options:
                 selected_search_result = st.selectbox(
                     "Select resume to view details", 
@@ -574,7 +604,27 @@ elif page == "Database Management":
                 if selected_search_result:
                     selected_resume = st.session_state.search_map.get(selected_search_result)
                     if selected_resume:
-                        st.json(selected_resume)
+                        # Display resume details in a visually appealing format
+                        st.markdown("---")
+                        col1, col2 = st.columns([1, 2])
+                        with col1:
+                            st.markdown(f"### 👤 {selected_resume.get('name', 'Unknown Name')}")
+                            st.markdown(f"📧 **Email:** {selected_resume.get('email', 'No email')}")
+                            st.markdown(f"📱 **Phone:** {selected_resume.get('phone', 'No phone')}")
+                            st.markdown(f"📍 **Location:** {selected_resume.get('location', 'No location')}")
+                            if selected_resume.get('skills'):
+                                st.markdown("### 🛠️ Skills")
+                                st.write(", ".join(selected_resume.get('skills', [])))
+                        with col2:
+                            if selected_resume.get('experience'):
+                                st.markdown("### 💼 Experience")
+                                for exp in selected_resume.get('experience', [])[:2]:
+                                    st.markdown(f"""
+                                    **{exp.get('title', 'N/A')}** at {exp.get('company', 'N/A')}
+                                    *{exp.get('duration', 'N/A')}*
+                                    """)
+                        if st.checkbox("Show Raw JSON"):
+                            st.json(selected_resume)
 
                         # Add delete button with confirmation logic
                         if "delete_confirmation" not in st.session_state:
@@ -594,7 +644,8 @@ elif page == "Database Management":
                                             db_manager.delete_resume({"_id": selected_resume["_id"]})
                                             st.success(f"✅ Deleted resume: {selected_resume.get('name', 'Unknown')}")
                                             # Refresh the results after deletion
-                                            st.session_state.all_resumes_results = db_manager.find({})
+                                            st.session_state.search_options = []
+                                            st.session_state.search_map = {}
                                             st.session_state.delete_confirmation = False  # Reset confirmation state
                                         except Exception as e:
                                             st.error(f"Error deleting resume: {e}")
