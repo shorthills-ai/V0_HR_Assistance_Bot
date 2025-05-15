@@ -22,15 +22,18 @@ st.set_page_config(
 )
 
 # Sidebar for app navigation and explanations
-st.sidebar.title("HR Bot Feature Suite")
+st.sidebar.title("HR Assistance Bot")
 page = st.sidebar.selectbox("Navigate", [
+    "Resume Search Engine",
     "Upload & Process", 
     "Database Management", 
-    "Resume Search Engine",
-])
+], index=0)  # Set index=0 to make Resume Search Engine the default
 
 # Add explanatory text based on selected page
-if page == "Upload & Process":
+if page == "Resume Search Engine":
+    st.sidebar.markdown("""
+    """)
+elif page == "Upload & Process":
     st.sidebar.markdown("""
     ### 📤 Upload & Process
     This page allows you to:
@@ -49,15 +52,6 @@ elif page == "Database Management":
     2. Search resumes by specific fields
     3. View detailed resume information
     4. Manage the resume database
-    """)
-elif page == "Resume Search Engine":
-    st.sidebar.markdown("""
-    ### 🔍 Resume Search Engine
-    This page provides:
-    1. Advanced search capabilities
-    2. Boolean search queries
-    3. Filter and sort options
-    4. Detailed resume matching
     """)
 
 # Initialize session state for tracking job progress
