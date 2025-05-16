@@ -34,24 +34,24 @@ class ResumeDBManager:
             result = self.collection.replace_one(query, resume, upsert=True)
             
             if result.matched_count:
-                print(f"✅ Updated existing resume for {resume.get('name', 'Unknown')} ({resume.get('email', 'No email')}) with ID: {resume.get('_id')}")
+                print(f"Updated existing resume for {resume.get('name', 'Unknown')} ({resume.get('email', 'No email')}) with ID: {resume.get('_id')}")
                 return resume.get("_id")
             else:
-                print(f"✅ Inserted new resume for {resume.get('name', 'Unknown')} ({resume.get('email', 'No email')}) with ID: {resume.get('_id')}")
+                print(f"Inserted new resume for {resume.get('name', 'Unknown')} ({resume.get('email', 'No email')}) with ID: {resume.get('_id')}")
                 return resume.get("_id")
         else:
             # If we don't have a valid query, just insert with a new ID
             if "_id" not in resume:
                 resume["_id"] = str(uuid.uuid4())
             result = self.collection.insert_one(resume)
-            print(f"✅ Inserted document with new ID: {result.inserted_id}")
+            print(f"Inserted document with new ID: {result.inserted_id}")
             return result.inserted_id
         
     def bulk_insert(self, folder_path: str):
         """Upsert all JSON files in a folder using insert_or_update_resume logic."""
         folder = Path(folder_path)
         files = list(folder.glob("*.json"))
-        print(f"📂 Found {len(files)} resumes to insert or update.\n")
+        print(f"Found {len(files)} resumes to insert or update.\n")
 
         inserted, failed = 0, 0
 
@@ -63,16 +63,16 @@ class ResumeDBManager:
                 self.insert_or_update_resume(doc)
                 inserted += 1
             except Exception as e:
-                print(f"❌ Failed to upsert {file.name}: {e}")
+                print(f"Failed to upsert {file.name}: {e}")
                 failed += 1
 
-        print(f"\n📊 Summary: Total = {len(files)}, Upserted = {inserted}, Failed = {failed}")
+        print(f"\nSummary: Total = {len(files)}, Upserted = {inserted}, Failed = {failed}")
 
     def find(self, query: dict):
         """Find resumes matching a query."""
-        print(f"🔍 Finding resumes matching: {query}")
+        print(f"Finding resumes matching: {query}")
         results = list(self.collection.find(query))
-        print(f"🔎 Found {len(results)} resumes.\n")
+        print(f"Found {len(results)} resumes.\n")
         for res in results:
             print(f"- {res.get('name')} | {res.get('email')} | ID: {res.get('_id')}")
         return results
@@ -81,34 +81,34 @@ class ResumeDBManager:
         """Update a resume by _id."""
         _id = update_data.pop("_id", None)
         if not _id:
-            print("❌ Update failed: '_id' field is required.")
+            print("Update failed: '_id' field is required.")
             return None
         result = self.collection.update_one({"_id": _id}, {"$set": update_data})
         if result.modified_count:
-            print(f"✅ Updated resume with ID {_id}")
+            print(f"Updated resume with ID {_id}")
         else:
-            print(f"⚠️ No resume found or no change for ID {_id}")
+            print(f"No resume found or no change for ID {_id}")
         return result
 
     def delete_resume(self, delete_data: dict):
         """Delete a resume by _id."""
         _id = delete_data.get("_id")
         if not _id:
-            print("❌ Delete failed: '_id' field is required.")
+            print("Delete failed: '_id' field is required.")
             return None
         
         # Ensure we're using just the ID string, not an object
         result = self.collection.delete_one({"_id": _id})
         if result.deleted_count:
-            print(f"🗑️ Deleted resume with ID {_id}")
+            print(f"Deleted resume with ID {_id}")
         else:
-            print(f"⚠️ No resume found with ID {_id}")
+            print(f"No resume found with ID {_id}")
         return result
         
     def delete_all_resumes(self):
         """Delete all resumes in the collection."""
         result = self.collection.delete_many({})
-        print(f"🗑️ Deleted {result.deleted_count} resumes.")
+        print(f"Deleted {result.deleted_count} resumes.")
         return result
 
 if __name__ == "__main__":
@@ -138,23 +138,23 @@ if __name__ == "__main__":
             query = json.loads(args.find)
             db.find(query)
         except Exception as e:
-            print(f"❌ Invalid JSON for --find: {e}")
+            print(f"Invalid JSON for --find: {e}")
 
     elif args.update:
         try:
             update_data = json.loads(args.update)
             db.update_resume(update_data)
         except Exception as e:
-            print(f"❌ Invalid JSON for --update: {e}")
+            print(f"Invalid JSON for --update: {e}")
 
     elif args.delete:
         try:
             delete_data = json.loads(args.delete)
             db.delete_resume(delete_data)
         except Exception as e:
-            print(f"❌ Invalid JSON for --delete: {e}")
+            print(f"Invalid JSON for --delete: {e}")
     elif args.delete_all:
         db.delete_all_resumes()
 
     else:
-        print("⚠️ Please provide one of --file, --folder, --find, --update, or --delete.")
+        print("Please provide one of --file, --folder, --find, --update, or --delete.")

@@ -1,3 +1,4 @@
+
 import streamlit as st
 import os
 import json
@@ -430,7 +431,7 @@ elif page == "Upload & Process":
                     st.write(", ".join(resume_data.get('skills', [])))
             with col2:
                 if resume_data.get('experience'):
-                    st.markdown("### 💼 Experience")
+                    st.markdown("### Experience")
                     for exp in resume_data.get('experience', [])[:2]:
                         st.markdown(f"""
                         **{exp.get('title')}** at {exp.get('company')}
