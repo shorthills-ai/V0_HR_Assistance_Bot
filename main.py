@@ -5,7 +5,8 @@ import tempfile
 from pathlib import Path
 import asyncio
 from datetime import datetime
-
+import copy
+from pdf_utils import PDFUtils  # Import the new class
 # Import your existing modules
 from llama_resume_parser import ResumeParser
 from standardizer import ResumeStandardizer
@@ -27,7 +28,8 @@ page = st.sidebar.selectbox("Navigate", [
     "Resume Search Engine",
     "Upload & Process", 
     "Database Management", 
-], index=0)  # Set index=0 to make Resume Search Engine the default
+    "Resume PDF Generator and Editor"  # Add the new page here
+], index=0) # Set index=0 to make Resume Search Engine the default
 
 # Add explanatory text based on selected page
 if page == "Resume Search Engine":
@@ -35,7 +37,7 @@ if page == "Resume Search Engine":
     """)
 elif page == "Upload & Process":
     st.sidebar.markdown("""
-    ### 📤 Upload & Process
+    ###  Upload & Process
     This page allows you to:
     1. Upload multiple resume files (PDF/DOCX)
     2. Automatically process them through our pipeline:
@@ -46,7 +48,7 @@ elif page == "Upload & Process":
     """)
 elif page == "Database Management":
     st.sidebar.markdown("""
-    ### 💾 Database Management
+    ###  Database Management
     This page enables you to:
     1. View all stored resumes
     2. Search resumes by specific fields
@@ -119,7 +121,7 @@ def process_uploaded_files(uploaded_files):
 
         progress_bar.progress((i + 1) / total_files)
 
-    status_text.text(f"✅ Processed {processed_count}/{total_files} files")
+    status_text.text(f" Processed {processed_count}/{total_files} files")
     st.session_state.processing_complete = True
     
 async def standardize_resumes():
@@ -197,7 +199,7 @@ async def standardize_resumes():
         # Update progress
         progress_bar.progress((i + 1) / total_files)
     
-    status_text.text(f"✅ Standardized {standardized_count}/{total_files} files")
+    status_text.text(f" Standardized {standardized_count}/{total_files} files")
     st.session_state.standardizing_complete = True
 
 def upload_to_mongodb():
@@ -234,7 +236,7 @@ def upload_to_mongodb():
         # Update progress
         progress_bar.progress((i + 1) / total_files)
     
-    status_text.text(f"✅ Uploaded {uploaded_count}/{total_files} resumes to MongoDB")
+    status_text.text(f" Uploaded {uploaded_count}/{total_files} resumes to MongoDB")
     st.session_state.db_upload_complete = True
 
 def validate_and_reprocess_resumes(uploaded_files):
@@ -259,7 +261,7 @@ def validate_and_reprocess_resumes(uploaded_files):
                 )
 
                 if not original_file:
-                    st.error(f"❌ Original file for {file_path.name} not found in uploaded files.")
+                    st.error(f" Original file for {file_path.name} not found in uploaded files.")
                     continue
 
                 # Save the uploaded file temporarily
@@ -294,13 +296,13 @@ def validate_and_reprocess_resumes(uploaded_files):
                     with open(file_path, "w", encoding="utf-8") as f:
                         json.dump(parsed_json, f, indent=2, ensure_ascii=False)
 
-                    st.success(f"✅ Reprocessed and standardized: {file_path.name}")
+                    st.success(f" Reprocessed and standardized: {file_path.name}")
                 else:
                     st.error(f"❌ Failed to re-parse {original_file.name}")
         except Exception as e:
             st.error(f"Error validating {file_path.name}: {e}")
 
-    st.write(f"🔄 Reprocessed {reprocessed_count} resumes")
+    st.write(f"Reprocessed {reprocessed_count} resumes")
 
 # Create temp directories for processing
 temp_dir = Path(tempfile.gettempdir()) / "resume_processor"
@@ -326,7 +328,7 @@ if page == "Resume Search Engine":
 # Page: Upload & Process Resumes
 # -------------------
 elif page == "Upload & Process":
-    st.title("📄 Resume Processing Pipeline")
+    st.title(" Resume Processing Pipeline")
     st.markdown("""
     ### Streamlined Resume Processing
     Upload your resume files and let our AI-powered pipeline handle the rest. The system will automatically:
@@ -338,7 +340,7 @@ elif page == "Upload & Process":
 """)
 
     uploaded_files = st.file_uploader(
-        "📤 Upload Resume Files", 
+        " Upload Resume Files", 
         type=["pdf", "docx"], 
         accept_multiple_files=True,
         key="resume_uploader",
@@ -363,7 +365,7 @@ elif page == "Upload & Process":
 
     # Combined processing button
     if uploaded_files:
-        if st.button("🚀 Process Resumes", type="primary", use_container_width=True):
+        if st.button(" Process Resumes", type="primary", use_container_width=True):
             with st.spinner("Processing resumes..."):
                 # Step 1: Parse
                 process_uploaded_files(uploaded_files)
@@ -380,7 +382,7 @@ elif page == "Upload & Process":
                 upload_to_mongodb()
                 st.success("✅ Database upload complete!")
     else:
-        st.info("👆 Please upload resume files to begin processing")
+        st.info(" Please upload resume files to begin processing")
 
     # Display processing status
     st.subheader("📊 Processing Status")
@@ -422,9 +424,9 @@ elif page == "Upload & Process":
             col1, col2 = st.columns([1, 2])
             with col1:
                 st.markdown(f"### 👤 {resume_data.get('name', 'Unknown Name')}")
-                st.markdown(f"📧 **Email:** {resume_data.get('email', 'No email')}")
-                st.markdown(f"📱 **Phone:** {resume_data.get('phone', 'No phone')}")
-                st.markdown(f"📍 **Location:** {resume_data.get('location', 'No location')}")
+                st.markdown(f"**Email:** {resume_data.get('email', 'No email')}")
+                st.markdown(f"**Phone:** {resume_data.get('phone', 'No phone')}")
+                st.markdown(f"**Location:** {resume_data.get('location', 'No location')}")
                 if resume_data.get('skills'):
                     st.markdown("### 🛠️ Skills")
                     st.write(", ".join(resume_data.get('skills', [])))
@@ -499,9 +501,9 @@ elif page == "Database Management":
                                 col1, col2 = st.columns([1, 2])
                                 with col1:
                                     st.markdown(f"### 👤 {selected_resume.get('name', 'Unknown Name')}")
-                                    st.markdown(f"📧 **Email:** {selected_resume.get('email', 'No email')}")
-                                    st.markdown(f"📱 **Phone:** {selected_resume.get('phone', 'No phone')}")
-                                    st.markdown(f"📍 **Location:** {selected_resume.get('location', 'No location')}")
+                                    st.markdown(f"**Email:** {selected_resume.get('email', 'No email')}")
+                                    st.markdown(f"**Phone:** {selected_resume.get('phone', 'No phone')}")
+                                    st.markdown(f"**Location:** {selected_resume.get('location', 'No location')}")
                                     if selected_resume.get('skills'):
                                         st.markdown("### 🛠️ Skills")
                                         st.write(", ".join(selected_resume.get('skills', [])))
@@ -532,7 +534,7 @@ elif page == "Database Management":
                                             if st.button("Yes, Delete", key="confirm_delete_button"):
                                                 try:
                                                     db_manager.delete_resume({"_id": selected_resume["_id"]})
-                                                    st.success(f"✅ Deleted resume: {selected_resume.get('name', 'Unknown')}")
+                                                    st.success(f" Deleted resume: {selected_resume.get('name', 'Unknown')}")
                                                     # Refresh the results after deletion
                                                     st.session_state.all_resumes_results = db_manager.find({})
                                                     st.session_state.delete_confirmation = False  # Reset confirmation state
@@ -609,9 +611,9 @@ elif page == "Database Management":
                         col1, col2 = st.columns([1, 2])
                         with col1:
                             st.markdown(f"### 👤 {selected_resume.get('name', 'Unknown Name')}")
-                            st.markdown(f"📧 **Email:** {selected_resume.get('email', 'No email')}")
-                            st.markdown(f"📱 **Phone:** {selected_resume.get('phone', 'No phone')}")
-                            st.markdown(f"📍 **Location:** {selected_resume.get('location', 'No location')}")
+                            st.markdown(f" **Email:** {selected_resume.get('email', 'No email')}")
+                            st.markdown(f" **Phone:** {selected_resume.get('phone', 'No phone')}")
+                            st.markdown(f" **Location:** {selected_resume.get('location', 'No location')}")
                             if selected_resume.get('skills'):
                                 st.markdown("### 🛠️ Skills")
                                 st.write(", ".join(selected_resume.get('skills', [])))
@@ -655,8 +657,144 @@ elif page == "Database Management":
                                         st.session_state.delete_confirmation = False  # Reset confirmation state
                     else:
                         st.error("Could not find the selected resume. Please try again.")
+
     except Exception as e:
         st.error(f"Error connecting to database: {e}")
+elif page == "Resume PDF Generator and Editor":
+    st.title("Resume PDF Generator and Editor")
+    uploaded_file = st.file_uploader("Upload your resume JSON file", type=["json"])
+
+    # Session state init
+    if 'resume_data' not in st.session_state:
+        st.session_state.resume_data = None
+
+    if uploaded_file is not None:
+        try:
+            if st.session_state.resume_data is None:
+                data = json.load(uploaded_file)
+                st.success("JSON file loaded successfully!")
+                st.session_state.resume_data = copy.deepcopy(data)
+                st.session_state.resume_data.setdefault("education", [])
+                st.session_state.resume_data.setdefault("projects", [])
+                st.session_state.resume_data.setdefault("skills", [])
+
+            pdf_display_container = st.empty()
+            st.subheader("Edit Resume Fields")
+
+            with st.form(key="resume_edit_form"):
+                resume_data = st.session_state.resume_data
+
+                # Name
+                resume_data["name"] = st.text_input("Name", value=resume_data.get("name", ""))
+                resume_data["title"] = st.text_input("Title", value=resume_data.get("title", ""))
+                resume_data["summary"] = st.text_area("Summary", value=resume_data.get("summary", ""), height=100)
+
+                # Education
+                st.subheader("Education")
+                for i, edu in enumerate(resume_data["education"]):
+                    st.markdown(f"**Education {i+1}**")
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        edu["institution"] = st.text_input(f"Institution {i+1}", value=edu.get("institution", ""), key=f"institution_{i}")
+                    with col2:
+                        edu["degree"] = st.text_input(f"Degree {i+1}", value=edu.get("degree", ""), key=f"degree_{i}")
+                    with col3:
+                        edu["year"] = st.text_input(f"Year {i+1}", value=edu.get("year", ""), key=f"year_{i}")
+
+                    c1, c2, c3 = st.columns([1, 1, 1])
+                    with c1:
+                        if st.form_submit_button(f"⬆️ Edu {i+1}"):
+                            if i > 0:
+                                resume_data["education"][i - 1], resume_data["education"][i] = resume_data["education"][i], resume_data["education"][i - 1]
+                                st.rerun()
+                    with c2:
+                        if st.form_submit_button(f"⬇️ Edu {i+1}"):
+                            if i < len(resume_data["education"]) - 1:
+                                resume_data["education"][i + 1], resume_data["education"][i] = resume_data["education"][i], resume_data["education"][i + 1]
+                                st.rerun()
+                    with c3:
+                        if st.form_submit_button(f"🗑️ Delete Edu {i+1}"):
+                            resume_data["education"].pop(i)
+                            st.rerun()
+
+                if st.form_submit_button("➕ Add Education"):
+                    resume_data["education"].append({"institution": "", "degree": "", "year": ""})
+                    st.rerun()
+
+                # Projects
+                st.subheader("Projects")
+                for i, proj in enumerate(resume_data["projects"]):
+                    st.markdown(f"**Project {i+1}**")
+                    proj["title"] = st.text_input(f"Title {i+1}", value=proj.get("title", ""), key=f"title_{i}")
+                    proj["description"] = st.text_area(f"Description {i+1}", value=proj.get("description", ""), key=f"desc_{i}")
+
+                    c1, c2, c3 = st.columns([1, 1, 1])
+                    with c1:
+                        if st.form_submit_button(f"⬆️ Move Up {i+1}"):
+                            if i > 0:
+                                resume_data["projects"][i - 1], resume_data["projects"][i] = resume_data["projects"][i], resume_data["projects"][i - 1]
+                                st.rerun()
+                    with c2:
+                        if st.form_submit_button(f"⬇️ Move Down {i+1}"):
+                            if i < len(resume_data["projects"]) - 1:
+                                resume_data["projects"][i + 1], resume_data["projects"][i] = resume_data["projects"][i], resume_data["projects"][i + 1]
+                                st.rerun()
+                    with c3:
+                        if st.form_submit_button(f"🗑️ Delete {i+1}"):
+                            resume_data["projects"].pop(i)
+                            st.rerun()
+
+                if st.form_submit_button("➕ Add Project"):
+                    resume_data["projects"].append({"title": "", "description": ""})
+                    st.rerun()
+
+                # Skills
+                st.subheader("Skills")
+                updated_skills = []
+                for i, skill in enumerate(resume_data["skills"]):
+                    col1, col2, col3, col4 = st.columns([4, 1, 1, 1])
+                    with col1:
+                        skill_input = st.text_input(f"Skill {i+1}", value=skill, key=f"skill_input_{i}")
+                        updated_skills.append(skill_input)
+                    with col2:
+                        if st.form_submit_button(f"⬆️ Skill {i+1}"):
+                            if i > 0:
+                                resume_data["skills"][i - 1], resume_data["skills"][i] = resume_data["skills"][i], resume_data["skills"][i - 1]
+                                st.rerun()
+                    with col3:
+                        if st.form_submit_button(f"⬇️ Skill {i+1}"):
+                            if i < len(resume_data["skills"]) - 1:
+                                resume_data["skills"][i + 1], resume_data["skills"][i] = resume_data["skills"][i], resume_data["skills"][i + 1]
+                                st.rerun()
+                    with col4:
+                        if st.form_submit_button(f" Delete Skill {i+1}"):
+                            resume_data["skills"].pop(i)
+                            st.rerun()
+
+                if st.form_submit_button("➕ Add Skill"):
+                    resume_data["skills"].append("")
+                    st.rerun()
+
+                submit_button = st.form_submit_button("Update and Generate New PDF")
+
+            if submit_button:
+                # Clean up empty skills
+                resume_data["skills"] = [s.strip() for s in updated_skills if s.strip()]
+
+                with st.spinner("Generating PDF..."):
+                    pdf_file, html_out = PDFUtils.generate_pdf(resume_data)
+                    pdf_b64 = PDFUtils.get_base64_pdf(pdf_file)
+
+                    st.success("PDF generated successfully!")
+                    pdf_display = f'<iframe src="data:application/pdf;base64,{pdf_b64}" width="700" height="900" type="application/pdf"></iframe>'
+                    pdf_display_container.markdown(pdf_display, unsafe_allow_html=True)
+
+                    st.download_button("Download PDF", data=pdf_file, file_name="resume.pdf", mime="application/pdf")
+
+        except json.JSONDecodeError:
+            st.error("Invalid JSON file. Please upload a valid JSON file.")
+    else:
+        st.info("Please upload a JSON file to start.")
 # # -------------------
 # # Page: Settings
 # # -------------------
