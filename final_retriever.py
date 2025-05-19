@@ -4,6 +4,45 @@ import streamlit as st
 from pymongo import MongoClient
 from boolean.boolean import BooleanAlgebra, Symbol, AND, OR
 import config
+import openai
+
+import streamlit as st
+
+AZURE_OPENAI_API_KEY = st.secrets["azure_openai"]["api_key"]
+AZURE_OPENAI_ENDPOINT = st.secrets["azure_openai"]["endpoint"]
+AZURE_OPENAI_DEPLOYMENT = st.secrets["azure_openai"]["deployment"]
+AZURE_OPENAI_API_VERSION = st.secrets["azure_openai"]["api_version"]
+
+# Create a reusable OpenAI client instance (Azure)
+openai_client = openai.AzureOpenAI(
+    api_key=AZURE_OPENAI_API_KEY,
+    api_version=AZURE_OPENAI_API_VERSION,
+    azure_endpoint=AZURE_OPENAI_ENDPOINT
+)
+def convert_natural_language_to_boolean(nl_query):
+    prompt = f"""Convert the following natural language query into a Boolean search query.
+        Example 1:
+        Input: Show me candidates skilled in Java and Spring Boot
+        Output: java and springboot
+
+        Example 2:
+        Input: Find someone who knows Python or data science
+        Output: python or datascience
+
+        Example 3:
+        Input: I want profiles with either machine learning or deep learning but not statistics
+        Output: (machinelearning or deeplearning) and not statistics
+
+        Now, convert this:
+        Input: {nl_query}
+        Output:"""
+
+    response = openai_client.chat.completions.create(
+        model=AZURE_OPENAI_DEPLOYMENT,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0
+    )
+    return response.choices[0].message.content.strip()
 
 
 class BooleanSearchParser:
@@ -11,6 +50,9 @@ class BooleanSearchParser:
         self.algebra = BooleanAlgebra()
         self.quoted_phrases = {}
         self.placeholder_counter = 0
+
+    def convert_nl_query(self, query):
+        return convert_natural_language_to_boolean(query)
 
     def normalize_operator(self, token: str) -> str:
         """Normalize boolean operators to uppercase regardless of input case."""
@@ -257,12 +299,18 @@ def display_json(data):
         del data["_id"]
     
     st.json(data)
-
+def normalize_boolean_operators(query):
+    # Replace lowercase boolean operators with uppercase versions (whole words only)
+    query = re.sub(r'\band\b', 'AND', query, flags=re.IGNORECASE)
+    query = re.sub(r'\bor\b', 'OR', query, flags=re.IGNORECASE)
+    query = re.sub(r'\bnot\b', 'NOT', query, flags=re.IGNORECASE)
+    return query
+# Main Streamlit App
 # Main Streamlit App
 def main():
     st.set_page_config(
         page_title="HR Bot Resume Search", 
-        page_icon="📄", 
+        page_icon=None, 
         layout="wide",
         initial_sidebar_state="expanded"
     )
@@ -305,12 +353,7 @@ def main():
     
     # Sidebar for search controls
     with st.sidebar:
-        st.image("https://img.icons8.com/color/96/000000/find-matching-job.png", width=80)
         st.title("HR Bot Resume Search")
-        
-        st.markdown("### Search")
-        search_query = st.text_input("Enter your search query:", placeholder="e.g., Python AND MachineLearning")
-        
         with st.expander("Search Tips"):
             st.markdown("""
             - **Simple keyword**: `Python`
@@ -320,6 +363,13 @@ def main():
             - **Multi-word skills**: `MachineLearning` or `HuggingFace`
             """)
         
+        st.markdown("### Search Filters")
+        search_query = st.text_input("Enter your search query:", placeholder="e.g., Python AND MachineLearning")
+        
+        if search_query:
+            search_query = convert_natural_language_to_boolean(search_query)
+            search_query = normalize_boolean_operators(search_query)
+        
         st.divider()
         st.markdown("""
         **About**  
@@ -327,16 +377,16 @@ def main():
         """)
 
     # Main content
-    st.title("🔎 Looking for some candidates?")
+    st.title("Looking for some candidates?")
     
     if not search_query:
-        st.info("👈 Enter a search query in the sidebar to begin searching.")
+        st.info("Enter a search query in the sidebar to begin searching.")
         
         # Sample placeholders when no search is performed
         col1, col2 = st.columns(2)
         with col1:
             st.markdown("""
-            ### 🚀 Features
+            ### Features
             - **Boolean Logic**: Complex search queries
             - **Fast Search**: Optimized algorithm
             - **Detailed View**: See complete candidate profiles
@@ -344,7 +394,7 @@ def main():
             """)
         with col2:
             st.markdown("""
-            ### 💡 Example Queries
+            ### Example Queries
             - `Python AND (Django OR Flask)`
             - `JavaScript AND React`
             - `AWS OR Azure`
@@ -357,7 +407,7 @@ def main():
         try:
             parsed_query = bsp.parse_query(search_query)
         except Exception as e:
-            st.error(f"❌ Error parsing query: {e}")
+            st.error(f"Error parsing query: {e}")
             return
     else:
         parsed_query = Symbol(search_query.lower())
@@ -368,13 +418,13 @@ def main():
             client = MongoClient(config.MONGO_URI)
             coll = client[config.DB_NAME][config.COLLECTION_NAME]
             docs = list(coll.find({}))
-            st.success(f"📁 Loaded {len(docs)} resumes from database")
+            st.success(f"Loaded {len(docs)} resumes from database")
     except Exception as e:
-        st.error(f"❌ Failed to load resumes: {e}")
+        st.error(f"Failed to load resumes: {e}")
         return
 
     # Search resumes
-    st.subheader("🔍 Searching resumes...")
+    st.subheader("Searching resumes...")
     progress_bar = st.progress(0)
     
     # Store unique documents using a dictionary with _id as key
@@ -406,7 +456,7 @@ def main():
                 highlighted_doc = highlight_dict_values(doc, search_terms)
                 st.session_state[f"highlighted_doc_{doc_id}"] = highlighted_doc
         except Exception as e:
-            st.warning(f"⚠️ Error processing document {doc.get('_id')}: {e}")
+            st.warning(f"Error processing document {doc.get('_id')}: {e}")
         progress_bar.progress((idx + 1) / len(docs))
 
     progress_bar.empty()
@@ -416,7 +466,7 @@ def main():
 
     # Display results
     if matching_docs_list:
-        st.markdown(f"<div class='result-count'>✅ Found {len(matching_docs_list)} matching candidates</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='result-count'>Found {len(matching_docs_list)} matching candidates</div>", unsafe_allow_html=True)
         
         # Create tabs for different views
         tab1, tab2 = st.tabs(["Card View", "Table View"])
@@ -433,15 +483,13 @@ def main():
                     email = highlight_text(doc.get('email', 'No email provided'), matched_terms)
                     phone = highlight_text(doc.get('phone', 'No phone provided'), matched_terms)
                     
-                    st.markdown(f"""
-                    <div class="card">
-                        <div class="candidate-name">{name}</div>
-                        <div class="contact-info">
-                            📧 {email} | 
-                            📱 {phone}
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    st.markdown(
+                        f'<div class="card">'
+                        f'<div class="candidate-name">{name}</div>'
+                        f'<div class="contact-info">{email} | {phone}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
                     
                     col1, col2 = st.columns([4, 1])
                     
@@ -464,9 +512,9 @@ def main():
                     
                     # Show details if button was clicked
                     if st.session_state.get(f"show_details_{doc.get('_id')}", False):
-                        with st.expander("📄 Full Resume Details", expanded=True):
+                        with st.expander("Full Resume Details", expanded=True):
                             tabs = st.tabs(["Formatted View", "JSON View"])
-                            
+                        
                             with tabs[0]:
                                 # Formatted structured view
                                 doc_id = str(doc.get('_id'))
@@ -476,7 +524,7 @@ def main():
                                 st.subheader(f"{highlighted_doc.get('name', 'Candidate')} - Profile")
                                 
                                 # Basic information
-                                st.markdown("### 👤 Basic Information")
+                                st.markdown("### Basic Information")
                                 col1, col2 = st.columns(2)
                                 
                                 col1.markdown(f"**Name:** {highlighted_doc.get('name', 'N/A')}", unsafe_allow_html=True)
@@ -486,7 +534,7 @@ def main():
                                 
                                 # Education
                                 if 'education' in highlighted_doc:
-                                    st.markdown("### 🎓 Education")
+                                    st.markdown("### Education")
                                     if isinstance(highlighted_doc['education'], list):
                                         for edu in highlighted_doc['education']:
                                             if isinstance(edu, dict):
@@ -499,7 +547,7 @@ def main():
                                 
                                 # Experience
                                 if 'experience' in highlighted_doc:
-                                    st.markdown("### 💼 Experience")
+                                    st.markdown("### Experience")
                                     if isinstance(highlighted_doc['experience'], list):
                                         for exp in highlighted_doc['experience']:
                                             if isinstance(exp, dict):
@@ -513,7 +561,7 @@ def main():
 
                                 # Projects
                                 if 'projects' in highlighted_doc:
-                                    st.markdown("### 🛠️ Projects")
+                                    st.markdown("### Projects")
                                     if isinstance(highlighted_doc['projects'], list):
                                         for proj in highlighted_doc['projects']:
                                             if isinstance(proj, dict):
@@ -526,7 +574,7 @@ def main():
 
                                 # Skills
                                 if 'skills' in highlighted_doc:
-                                    st.markdown("### 🛠️ Skills")
+                                    st.markdown("### Skills")
                                     if isinstance(highlighted_doc['skills'], list):
                                         st.markdown(", ".join(highlighted_doc['skills']), unsafe_allow_html=True)
                                     else:
@@ -534,13 +582,13 @@ def main():
 
                                 # Certifications
                                 if 'certifications' in highlighted_doc:
-                                    st.markdown("### 📜 Certifications")
+                                    st.markdown("### Certifications")
                                     if isinstance(highlighted_doc['certifications'], list):
                                         for cert in highlighted_doc['certifications']:
                                             if isinstance(cert, dict):
                                                 st.markdown(f"**{cert.get('title', 'Certification')}** - {cert.get('issuer', '')} ({cert.get('year', '')})", unsafe_allow_html=True)
                                                 if 'link' in cert:
-                                                    st.markdown(f"[🔗 View Certificate]({cert['link']})")
+                                                    st.markdown(f"[View Certificate]({cert['link']})")
                                             else:
                                                 st.markdown(f"- {cert}", unsafe_allow_html=True)
                                     else:
@@ -548,7 +596,7 @@ def main():
 
                                 # Languages
                                 if 'languages' in highlighted_doc and highlighted_doc['languages']:
-                                    st.markdown("### 🌍 Languages")
+                                    st.markdown("### Languages")
                                     if isinstance(highlighted_doc['languages'], list):
                                         st.markdown(", ".join(highlighted_doc['languages']), unsafe_allow_html=True)
                                     else:
@@ -556,7 +604,7 @@ def main():
 
                                 # Social Profiles
                                 if 'social_profiles' in highlighted_doc:
-                                    st.markdown("### 🌐 Social Profiles")
+                                    st.markdown("### Social Profiles")
                                     if isinstance(highlighted_doc['social_profiles'], list):
                                         for profile in highlighted_doc['social_profiles']:
                                             if isinstance(profile, dict):
@@ -592,7 +640,7 @@ def main():
             
             st.dataframe(table_data, use_container_width=True)
     else:
-        st.info("🔎 No resumes matched your search query. Try adjusting your terms.")
+        st.info("No resumes matched your search query. Try adjusting your terms.")
         st.markdown("""
         **Tips to improve results:**
         - Use broader terms
@@ -607,3 +655,6 @@ def run_retriever():
         # Initialize any other session state variables here
     
     main()
+
+
+
