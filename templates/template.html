@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Resume</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Montserrat', sans-serif;
+      background: #fff;
+    }
+
+    @page {
+      size: A4;
+      margin: 0;
+    }
+
+    .page {
+      position: relative;
+      width: 21cm;
+      min-height: 29.7cm;
+      margin: auto;
+      display: flex;
+      flex-direction: column;
+      background: #fff;
+      z-index: 1;
+    }
+
+    .page::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-image: url("{{ bg_image }}");
+        background-repeat: no-repeat;
+        background-position: center center;
+        background-size: 35%; /* ↓ reduced size for watermark effect */
+        opacity: 0.30; /* slightly more subtle for watermark look */
+        z-index: 0;
+        pointer-events: none;
+      }
+      
+
+    .page > * {
+      position: relative;
+      z-index: 1;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px;
+    }
+    .title {
+      font-size: 15px; /* Increased from default 13px */
+
+      margin-bottom: 10px;
+    }
+    
+    .left-logo,
+    .right-logo {
+      height: 40px;
+    }
+
+    .content {
+      flex: 1;
+      display: flex;
+      padding: 0 20px 20px 20px;
+    }
+
+    .left-column {
+      width: 30%;
+      padding-right: 20px;
+    }
+
+    .right-column {
+      width: 70%;
+      padding-left: 20px;
+    }
+
+    h1 {
+      font-size: 22px;
+      color: #f25d5d;
+      margin-top: 20px;
+      margin-bottom: 15px;
+    }
+
+    h2 {
+      font-size: 16px;
+      color: #f25d5d;
+      margin-top: 20px;
+      margin-bottom: 10px;
+
+      padding-bottom: 5px;
+    }
+
+    h3 {
+      font-size: 15px;
+      color: #f25d5d;
+      margin-top: 15px;
+    }
+
+    p {
+      font-size: 13px;
+      line-height: 1.5;
+      color: #000;
+    }
+
+    ul {
+      list-style-type: none;
+      padding-left: 0;
+      margin-top: 15px;
+    }
+
+    ul li::before {
+      content: "➤ ";
+      color: #f25d5d;
+      font-weight: bold;
+      margin-right: 4px;
+    }
+
+    ul li {
+      font-size: 13px;
+      line-height: 1.5;
+      margin-bottom: 15px;
+    }
+
+    .section-title {
+      color: #f25d5d;
+      font-size: 13px;
+      text-transform: uppercase;
+      margin-top: 25px;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+
+    .footer {
+      background-color: #f25d5d;
+      text-align: center;
+      padding: 10px 0;
+      font-size: 13px;
+      color: #000;
+      width: 100%;
+    }
+
+    .footer a {
+      color: #000;
+      text-decoration: none;
+    }
+
+    @media print {
+      .page {
+        page-break-after: always;
+      }
+
+      .footer {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="header">
+      <img src="{{ left_logo }}" class="left-logo">
+      <img src="{{ right_logo }}" class="right-logo">
+    </div>
+
+    <div class="content">
+      <div class="left-column">
+        <h1>{{ cv.name }}</h1>
+        <p class="title"><strong>{{ cv.title }}</strong></p>
+
+
+        {% if cv.skills %}
+          <div class="section-title">Skills</div>
+          <ul>
+            {% for skill in cv.skills %}
+              <li>{{ skill }}</li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+
+        {% if cv.education %}
+          <div class="section-title">Education</div>
+          <ul>
+            {% for edu in cv.education %}
+              <li>{{ edu.degree }}<br>{{ edu.institution }}</li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      </div>
+
+      <div class="right-column">
+        {% if cv.summary %}
+          <h2>Summary</h2>
+          <p>{{ cv.summary }}</p>
+        {% endif %}
+
+        {% if cv.projects %}
+          <h2>Key Responsibilities:</h2>
+          {% for project in cv.projects %}
+            {% if project.title %}
+              <h3>{{ project.title }}</h3>
+            {% endif %}
+            {% if project.description %}
+              <ul>
+                {% for point in project.description.split('.') if point.strip() %}
+                  <li>{{ point.strip() }}</li>
+                {% endfor %}
+              </ul>
+            {% endif %}
+          {% endfor %}
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="footer">
+      © <a href="https://www.shorthills.ai" target="_blank">www.shorthills.ai</a>
+    </div>
+  </div>
+</body>
+</html>

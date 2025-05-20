@@ -19,3 +19,4 @@ chromadb
 python-dotenv
 azure-identity
 azure-core
+weasyprint
