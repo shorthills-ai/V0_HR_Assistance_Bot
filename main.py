@@ -479,7 +479,26 @@ elif page == "JD-Resume Regeneration":
                         st.markdown("#### 📊 Matching Analysis")
                         st.markdown(cand["reason"])
 
-                        # Always show the editable retailored resume form for this candidate after retailoring
+                        # Add retailor resume button
+                        if st.button("🔄 Retailor Resume", key=f"retailor_bulk_{cand['mongo_id']}"):
+                            with st.spinner("Retailoring resume..."):
+                                safe_resume = convert_objectid_to_str(cand["resume"])
+                                # Get matcher from session state
+                                matcher = st.session_state.get('matcher')
+                                if matcher:
+                                    new_res = matcher.resume_retailor.retailor_resume(
+                                        safe_resume,
+                                        st.session_state.extracted_keywords
+                                    )
+                                    if new_res:
+                                        st.success("Resume retailored successfully!")
+                                        # Store the retailored resume in session state
+                                        st.session_state[f'resume_data_{cand["mongo_id"]}'] = new_res
+                                        st.session_state[f'pdf_ready_{cand["mongo_id"]}'] = False
+                                else:
+                                    st.error("Error: Job matcher not initialized. Please try searching again.")
+
+                        # Show editable form and PDF generation if resume has been retailored
                         if f'resume_data_{cand["mongo_id"]}' in st.session_state:
                             with st.form(key=f"resume_edit_form_{cand['mongo_id']}"):
                                 resume_data = st.session_state[f'resume_data_{cand["mongo_id"]}']
@@ -560,7 +579,8 @@ elif page == "JD-Resume Regeneration":
                                     st.session_state[f'generated_pdf_b64_{cand["mongo_id"]}'] = pdf_b64
                                     st.session_state[f'pdf_ready_{cand["mongo_id"]}'] = True
                                     st.success("PDF generated successfully!")
-                        # Always show the PDF preview and download after PDF generation
+
+                        # Show PDF preview and download if available
                         if st.session_state.get(f'pdf_ready_{cand["mongo_id"]}', False):
                             st.markdown("### 📄 Generated PDF Preview")
                             pdf_b64 = st.session_state[f'generated_pdf_b64_{cand["mongo_id"]}']
@@ -573,11 +593,14 @@ elif page == "JD-Resume Regeneration":
                                 mime="application/pdf",
                                 key=f"pdf_download_{cand['mongo_id']}"
                             )
-                            # Add generate summary, editable text area, and copy button (like individual flow)
+
+                            # Add generate summary, editable text area, and copy button
                             st.markdown("### 📝 Candidate Pitch Summary")
                             if st.button("✨ Generate Summary", key=f"generate_summary_{cand['mongo_id']}", use_container_width=True):
                                 with st.spinner("Generating candidate summary..."):
-                                    summary_prompt = f"""Write a detailed, information-rich, single-paragraph professional summary to introduce the following candidate to a client for a job opportunity. The summary should be written in third person, using formal and business-appropriate language, and should avoid any informal, overly enthusiastic, or emotional expressions. The summary must be comprehensive and cover the candidate's technical expertise, relevant experience, key achievements, major projects, technologies and frameworks used, and educational background as they pertain to the job description. Be specific about programming languages, frameworks, tools, and platforms the candidate has worked with. Mention any certifications or notable accomplishments. The summary should reflect high ethical standards and professionalism, and should not include any bullet points, excitement, or casual language. Use only facts from the provided information and do not invent or exaggerate. The summary should be suitable for inclusion in a formal client communication and should be at least 5-6 sentences long.\n\nCandidate Information:\nName: {resume_data.get('name', '')}\nTitle: {resume_data.get('title', '')}\nSummary: {resume_data.get('summary', '')}\nSkills: {', '.join(resume_data.get('skills', []))}\n\nProjects:\n{json.dumps(resume_data.get('projects', []), indent=2)}\n\nEducation:\n{json.dumps(resume_data.get('education', []), indent=2)}"""
+                                    summary_prompt = (
+                                        f"You are an expert HR professional. You MUST infer and assign a professional job title for the candidate based on the job description and their experience/skills. Do not leave the title blank. If unsure, use the most relevant title from the job description. Then, write a detailed, information-rich, single-paragraph professional summary (8-10 sentences) to introduce the following candidate to a client for a job opportunity. The summary should be written in third person, using formal and business-appropriate language, and should avoid any informal, overly enthusiastic, or emotional expressions. The summary must be comprehensive and cover the candidate's technical expertise, relevant experience, key achievements, major projects, technologies and frameworks used, leadership, teamwork, impact, and educational background as they pertain to the job description. Be specific about programming languages, frameworks, tools, and platforms the candidate has worked with. Mention any certifications or notable accomplishments. The summary should reflect high ethical standards and professionalism, and should not include any bullet points, excitement, or casual language. Use only facts from the provided information and do not invent or exaggerate. The summary should be suitable for inclusion in a formal client communication and should be at least 8-10 sentences long.\n\nReturn your response as a JSON object with two fields: 'title' and 'summary'.\n\nCandidate Information:\nName: {resume_data.get('name', '')}\nTitle: {resume_data.get('title', '')}\nSummary: {resume_data.get('summary', '')}\nSkills: {', '.join(resume_data.get('skills', []))}\n\nProjects:\n{json.dumps(resume_data.get('projects', []), indent=2)}\n\nEducation:\n{json.dumps(resume_data.get('education', []), indent=2)}\n\nJob Description:\n{job_description}"
+                                    )
                                     try:
                                         client = AzureOpenAI(
                                             api_key=st.secrets["azure_openai"]["api_key"],
@@ -590,10 +613,23 @@ elif page == "JD-Resume Regeneration":
                                                 {"role": "system", "content": "You are an expert HR professional who writes compelling candidate summaries."},
                                                 {"role": "user", "content": summary_prompt}
                                             ],
-                                            temperature=0.7
+                                            temperature=0.7,
+                                            response_format={"type": "json_object"}
                                         )
-                                        generated_summary = response.choices[0].message.content.strip()
-                                        st.session_state[f'candidate_summary_{cand["mongo_id"]}'] = generated_summary
+                                        result = response.choices[0].message.content.strip()
+                                        try:
+                                            result_json = json.loads(result)
+                                            # Fallback: If title is empty, use the first line of the job description or a default
+                                            title = result_json.get("title", "").strip()
+                                            if not title:
+                                                # Try to extract a title from the job description (first line or first word before a dash/colon/period)
+                                                title = job_description.split("\n")[0].split("-")[0].split(":")[0].split(".")[0].strip()
+                                                if not title:
+                                                    title = "Candidate"
+                                            resume_data["title"] = title
+                                            st.session_state[f'candidate_summary_{cand["mongo_id"]}'] = result_json.get("summary", "")
+                                        except Exception as e:
+                                            st.session_state[f'candidate_summary_{cand["mongo_id"]}'] = result
                                     except Exception as e:
                                         st.error(f"Error generating summary: {str(e)}")
                             summary = st.session_state.get(f'candidate_summary_{cand["mongo_id"]}', "")
@@ -785,7 +821,9 @@ elif page == "JD-Resume Regeneration":
             st.markdown("### 📝 Candidate Pitch Summary")
             if st.button("✨ Generate Summary", key="generate_summary_single", use_container_width=True):
                 with st.spinner("Generating candidate summary..."):
-                    summary_prompt = f"""Write a detailed, information-rich, single-paragraph professional summary to introduce the following candidate to a client for a job opportunity. The summary should be written in third person, using formal and business-appropriate language, and should avoid any informal, overly enthusiastic, or emotional expressions. The summary must be comprehensive and cover the candidate's technical expertise, relevant experience, key achievements, major projects, technologies and frameworks used, and educational background as they pertain to the job description. Be specific about programming languages, frameworks, tools, and platforms the candidate has worked with. Mention any certifications or notable accomplishments. The summary should reflect high ethical standards and professionalism, and should not include any bullet points, excitement, or casual language. Use only facts from the provided information and do not invent or exaggerate. The summary should be suitable for inclusion in a formal client communication and should be at least 5-6 sentences long.\n\nCandidate Information:\nName: {st.session_state.resume_data.get('name', '')}\nTitle: {st.session_state.resume_data.get('title', '')}\nSummary: {st.session_state.resume_data.get('summary', '')}\nSkills: {', '.join(st.session_state.resume_data.get('skills', []))}\n\nProjects:\n{json.dumps(st.session_state.resume_data.get('projects', []), indent=2)}\n\nEducation:\n{json.dumps(st.session_state.resume_data.get('education', []), indent=2)}"""
+                    summary_prompt = (
+                        f"You are an expert HR professional. You MUST infer and assign a professional job title for the candidate based on the job description and their experience/skills. Do not leave the title blank. If unsure, use the most relevant title from the job description. Then, write a detailed, information-rich, single-paragraph professional summary (8-10 sentences) to introduce the following candidate to a client for a job opportunity. The summary should be written in third person, using formal and business-appropriate language, and should avoid any informal, overly enthusiastic, or emotional expressions. The summary must be comprehensive and cover the candidate's technical expertise, relevant experience, key achievements, major projects, technologies and frameworks used, leadership, teamwork, impact, and educational background as they pertain to the job description. Be specific about programming languages, frameworks, tools, and platforms the candidate has worked with. Mention any certifications or notable accomplishments. The summary should reflect high ethical standards and professionalism, and should not include any bullet points, excitement, or casual language. Use only facts from the provided information and do not invent or exaggerate. The summary should be suitable for inclusion in a formal client communication and should be at least 8-10 sentences long.\n\nReturn your response as a JSON object with two fields: 'title' and 'summary'.\n\nCandidate Information:\nName: {st.session_state.resume_data.get('name', '')}\nTitle: {st.session_state.resume_data.get('title', '')}\nSummary: {st.session_state.resume_data.get('summary', '')}\nSkills: {', '.join(st.session_state.resume_data.get('skills', []))}\n\nProjects:\n{json.dumps(st.session_state.resume_data.get('projects', []), indent=2)}\n\nEducation:\n{json.dumps(st.session_state.resume_data.get('education', []), indent=2)}\n\nJob Description:\n{job_description_single}"
+                    )
                     try:
                         client = AzureOpenAI(
                             api_key=st.secrets["azure_openai"]["api_key"],
@@ -798,10 +836,22 @@ elif page == "JD-Resume Regeneration":
                                 {"role": "system", "content": "You are an expert HR professional who writes compelling candidate summaries."},
                                 {"role": "user", "content": summary_prompt}
                             ],
-                            temperature=0.7
+                            temperature=0.7,
+                            response_format={"type": "json_object"}
                         )
-                        generated_summary = response.choices[0].message.content.strip()
-                        st.session_state.candidate_summary_single = generated_summary
+                        result = response.choices[0].message.content.strip()
+                        try:
+                            result_json = json.loads(result)
+                            # Fallback: If title is empty, use the first line of the job description or a default
+                            title = result_json.get("title", "").strip()
+                            if not title:
+                                title = job_description_single.split("\n")[0].split("-")[0].split(":")[0].split(".")[0].strip()
+                                if not title:
+                                    title = "Candidate"
+                            st.session_state.resume_data["title"] = title
+                            st.session_state.candidate_summary_single = result_json.get("summary", "")
+                        except Exception as e:
+                            st.session_state.candidate_summary_single = result
                     except Exception as e:
                         st.error(f"Error generating summary: {str(e)}")
             summary = st.session_state.get("candidate_summary_single", "")
@@ -1176,6 +1226,11 @@ def job_matcher_page():
                     if st.button("🔄 Retailor Resume", key=f"retailor_{candidate['mongo_id']}"):
                         with st.spinner("Retailoring resume..."):
                             safe_resume = convert_objectid_to_str(candidate["resume"])
+                            # Get matcher from session state
+                            matcher = st.session_state.get('matcher')
+                            if not matcher:
+                                st.error("Error: Job matcher not initialized. Please try searching again.")
+                                return
                             new_res = matcher.resume_retailor.retailor_resume(
                             safe_resume,
                             st.session_state.extracted_keywords
@@ -1198,4 +1253,3 @@ def job_matcher_page():
                 # Show full resume button
                 if st.button("📄 View Full Resume", key=f"view_{candidate['mongo_id']}"):
                     st.json(candidate['resume'])
-
