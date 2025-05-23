@@ -622,11 +622,12 @@ elif page == "JD-Resume Regeneration":
         st.markdown("### 👤 Search & Retailor for a Specific Candidate")
         st.markdown("Find a specific candidate and retailor their resume for a particular job.")
         
-        col1, col2 = st.columns(2)
+        col1, col2 = st.columns([1, 3])
         with col1:
-            search_field = st.selectbox("Search by", ["Name"])
+            search_field = st.selectbox("Search by", ["Name", "Employee ID"], index=1)
         with col2:
-            search_value = st.text_input(f"Enter candidate {search_field}")
+            label = f"Enter candidate {search_field}" if search_field == "Name" else "Enter candidate Employee ID"
+            search_value = st.text_input(label)
 
         job_description_single = st.text_area(
             "Enter Job Description for This Candidate", 
@@ -641,8 +642,13 @@ elif page == "JD-Resume Regeneration":
             else:
                 from db_manager import ResumeDBManager
                 db_manager = ResumeDBManager()
-                # Convert search field to lowercase for database query
-                query = {search_field.lower(): {"$regex": f"^{search_value}$", "$options": "i"}}
+                # Build the query based on the selected search field
+                if search_field == "Name":
+                    query = {"name": {"$regex": f"^{search_value}$", "$options": "i"}}
+                elif search_field == "Employee ID":
+                    query = {"ID": {"$regex": f"^{search_value}$", "$options": "i"}}
+                else:
+                    query = {search_field.lower(): {"$regex": f"^{search_value}$", "$options": "i"}}
                 results = db_manager.find(query)
                 if not results:
                     st.error("No candidate found with that info.")
