@@ -914,42 +914,32 @@ elif page == "Upload & Process":
             file_path = standardized_dir / selected_file
             with open(file_path, "r", encoding="utf-8") as f:
                 resume_data = json.load(f)
-            
-            # Create a more visually appealing preview
             st.markdown("---")
-            col1, col2 = st.columns([1, 2])
-            with col1:
-                st.markdown(f"### 👤 {resume_data.get('name', 'Unknown Name')}")
-                st.markdown(f"📧 **Email:** {resume_data.get('email', 'No email')}")
-                st.markdown(f"📱 **Phone:** {resume_data.get('phone', 'No phone')}")
-                st.markdown(f"📍 **Location:** {resume_data.get('location', 'No location')}")
-                if resume_data.get('skills'):
-                    st.markdown("### 🛠️ Skills")
-                    st.write(", ".join(resume_data.get('skills', [])))
-            with col2:
-                if resume_data.get('experience'):
-                    st.markdown("### 💼 Experience")
-                    for exp in resume_data.get('experience', [])[:2]:
-                        st.markdown(f"""
-                        **{exp.get('title')}** at {exp.get('company')}
-                        *{exp.get('duration', 'N/A')}*
-                        """)
-            if st.checkbox("Show Raw JSON"):
-                st.json(resume_data)
+            render_formatted_resume(resume_data)
 
 # -------------------
 # Page: Database Management
 # -------------------
 elif page == "Database Management":
     st.title("💾 Resume Database Management")
+    
     st.markdown("""
     ### Database Operations
-    Manage and query your resume database with powerful search capabilities.
-""")
+    
+    #### Available Operations:
+    1. - See complete list of candidates in database
+       - View detailed information in table format
+    
+    2. **Search Candidates By:**
+       - Name
+       - Employee ID 
+       - Location
+       - College/University
+    """)
+
 
     try:
         db_manager = ResumeDBManager()
-        st.subheader("🔍 Query Resumes")
         query_type = st.radio("Select Query Type", ["View All Resumes", "Search by Field"])
         
         if query_type == "View All Resumes":
@@ -988,27 +978,8 @@ elif page == "Database Management":
                         if selected_resume_option and "No resumes found" not in selected_resume_option:
                             selected_resume = st.session_state.resume_display_map.get(selected_resume_option)
                             if selected_resume:
-                                # Display resume details in a visually appealing format
                                 st.markdown("---")
-                                col1, col2 = st.columns([1, 2])
-                                with col1:
-                                    st.markdown(f"### 👤 {selected_resume.get('name', 'Unknown Name')}")
-                                    st.markdown(f"**Email:** {selected_resume.get('email', 'No email')}")
-                                    st.markdown(f"**Phone:** {selected_resume.get('phone', 'No phone')}")
-                                    st.markdown(f"**Location:** {selected_resume.get('location', 'No location')}")
-                                    if selected_resume.get('skills'):
-                                        st.markdown("### 🛠️ Skills")
-                                        st.write(", ".join(selected_resume.get('skills', [])))
-                                with col2:
-                                    if selected_resume.get('experience'):
-                                        st.markdown("### 💼 Experience")
-                                        for exp in selected_resume.get('experience', [])[:2]:
-                                            st.markdown(f"""
-                                            **{exp.get('title', 'N/A')}** at {exp.get('company', 'N/A')}
-                                            *{exp.get('duration', 'N/A')}*
-                                            """)
-                                if st.checkbox("Show Raw JSON"):
-                                    st.json(selected_resume)
+                                render_formatted_resume(selected_resume)
 
                                 # Add delete button with confirmation logic
                                 if "delete_confirmation" not in st.session_state:
@@ -1098,27 +1069,8 @@ elif page == "Database Management":
                 if selected_search_result:
                     selected_resume = st.session_state.search_map.get(selected_search_result)
                     if selected_resume:
-                        # Display resume details in a visually appealing format
                         st.markdown("---")
-                        col1, col2 = st.columns([1, 2])
-                        with col1:
-                            st.markdown(f"### 👤 {selected_resume.get('name', 'Unknown Name')}")
-                            st.markdown(f" **Email:** {selected_resume.get('email', 'No email')}")
-                            st.markdown(f" **Phone:** {selected_resume.get('phone', 'No phone')}")
-                            st.markdown(f" **Location:** {selected_resume.get('location', 'No location')}")
-                            if selected_resume.get('skills'):
-                                st.markdown("### 🛠️ Skills")
-                                st.write(", ".join(selected_resume.get('skills', [])))
-                        with col2:
-                            if selected_resume.get('experience'):
-                                st.markdown("### 💼 Experience")
-                                for exp in selected_resume.get('experience', [])[:2]:
-                                    st.markdown(f"""
-                                    **{exp.get('title', 'N/A')}** at {exp.get('company', 'N/A')}
-                                    *{exp.get('duration', 'N/A')}*
-                                    """)
-                        if st.checkbox("Show Raw JSON"):
-                            st.json(selected_resume)
+                        render_formatted_resume(selected_resume)
 
                         # Add delete button with confirmation logic
                         if "delete_confirmation" not in st.session_state:
