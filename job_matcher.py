@@ -296,7 +296,7 @@ class JobMatcher:
         
         try:
             # Execute the query with a limit
-            candidates = list(self.collection.find(query).limit(10))
+            candidates = list(self.collection.find(query))
             if not candidates:
                 st.info("No candidates found matching the keywords")
             return candidates
