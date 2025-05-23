@@ -397,33 +397,31 @@ def main():
     
     # Sidebar for search controls
     with st.sidebar:
-        st.image("https://img.icons8.com/color/96/000000/find-matching-job.png", width=80)
-        st.title("HR Bot Resume Search")
-        
-        st.markdown("### Search")
-        search_query = st.text_input("Enter your search query:", placeholder="e.g., Python AND MachineLearning")
-        
+        st.markdown("""
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <img src="https://img.icons8.com/color/96/000000/find-matching-job.png" width="32">
+                <h1 style="margin: 0;">HR Bot Resume Search</h1>
+            </div>
+        """, unsafe_allow_html=True)
         with st.expander("Search Tips"):
             st.markdown("""
             - **Simple keyword**: `Python`
-            - **AND operator**: `Python AND Django`
+            - **AND operator**: `Python AND Django`,'Machine Learning AND Python'.
             - **OR operator**: `JavaScript OR TypeScript`
             - **Grouped logic**: `(Python OR Java) AND (AWS OR Azure)`
-            - **Multi-word skills**: `MachineLearning` or `HuggingFace`
             """)
-        
         st.divider()
         st.markdown("""
         **About**  
-        Find relevant candidates by matching keywords and phrases in their profiles. Supports Boolean search for precise filtering.
+        Find relevant candidates by matching keywords and phrases in their profiles. Supports Boolean search for precise filtering ad logical searching using AND/OR logics.
         """)
 
     # Main content
     st.title("🔎 Looking for some candidates?")
-    
+    st.markdown("### Search for Candidates")
+    search_query = st.text_input("Enter your search query:", placeholder="e.g., Python AND Machine Learning")
     if not search_query:
-        st.info("👈 Enter a search query in the sidebar to begin searching.")
-        
+        st.info("👆 Enter a search query above to begin searching.")
         # Sample placeholders when no search is performed
         col1, col2 = st.columns(2)
         with col1:
