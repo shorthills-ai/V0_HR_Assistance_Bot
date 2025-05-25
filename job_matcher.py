@@ -199,17 +199,259 @@ class ResumeRetailor:
             azure_endpoint=st.secrets["azure_openai"]["endpoint"]
         )
     
-    def retailor_resume(self, original_resume: Dict, job_keywords: Set[str]) -> Dict:
+    def expand_project_description(self, project: Dict, job_keywords: Set[str]) -> str:
+        """Expand a project description based on its title and minimal description."""
+        system_prompt = """You are an expert at writing detailed, professional project descriptions for resumes.
+Your task is to expand a minimal project description into a comprehensive, well-structured description that:
+1. Focuses STRICTLY on aspects related to the provided job keywords
+2. Maintains the original intent and scope while emphasizing keyword-relevant details
+3. Includes ONLY technologies and tools that match or are directly related to the job keywords
+4. Describes impact and outcomes in the context of the job requirements
+5. Uses professional, formal language
+6. Is based ONLY on the information provided - do not invent or hallucinate
+7. MUST be at least 150 words long (approximately 8-10 sentences)
+8. Each sentence should connect to at least one job keyword
+
+Important:
+- Do NOT invent technologies, tools, or outcomes
+- Do NOT add specific metrics unless provided
+- Keep the description factual and plausible
+- Use only the information from the project title and minimal description
+- Focus EXCLUSIVELY on aspects that align with the job keywords
+- Structure the description with:
+  * First 2-3 sentences: Project overview, purpose, and scope
+  * Middle 4-5 sentences: Detailed technical implementation, methodologies, and challenges
+  * Final 2-3 sentences: Impact, outcomes, and business value
+- If the project doesn't match any job keywords, return the original description unchanged
+- Do NOT add new projects or features that weren't in the original description"""
+
+        user_prompt = f"""Expand this project description into a detailed, professional description that focuses STRICTLY on the job keywords.
+
+Project Title: {project.get('title', '')}
+Original Description: {project.get('description', '')}
+Job Keywords: {', '.join(job_keywords)}
+
+Write a detailed description (at least 150 words, approximately 8-10 sentences) that:
+1. Focuses EXCLUSIVELY on aspects related to the job keywords
+2. Maintains the original scope while emphasizing keyword-relevant details
+3. Includes ONLY technologies and tools that match the job keywords
+4. Uses professional language
+5. Is based only on the provided information
+6. Follows this structure:
+   - First 2-3 sentences: Project overview, purpose, and scope
+   - Middle 4-5 sentences: Detailed technical implementation, methodologies, and challenges
+   - Final 2-3 sentences: Impact, outcomes, and business value
+
+Important: 
+- The final description MUST be at least 150 words long
+- Each sentence should connect to at least one job keyword
+- Do not include details unrelated to the job keywords
+- Focus on technical depth and implementation details
+- If the project doesn't match any job keywords, return the original description unchanged
+- Do NOT add new projects or features that weren't in the original description"""
+
+        try:
+            response = self.client.chat.completions.create(
+                model=st.secrets["azure_openai"]["deployment"],
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.3,
+                response_format={"type": "text"}
+            )
+            
+            expanded_description = response.choices[0].message.content.strip()
+            
+            # Verify word count and keyword relevance
+            word_count = len(expanded_description.split())
+            if word_count < 150:
+                # If too short, ask for more details focusing on keywords
+                follow_up_prompt = f"""The expanded description is too short ({word_count} words) and needs to focus more on the job keywords. Please expand it to at least 150 words by adding more technical details and implementation specifics that are directly related to these job keywords: {', '.join(job_keywords)}
+
+Current Description:
+{expanded_description}
+
+Please provide a more detailed version that:
+1. Is at least 150 words long
+2. Focuses STRICTLY on the job keywords
+3. Includes more technical details related to the keywords
+4. Maintains accuracy and relevance
+5. Follows the structure:
+   - First 2-3 sentences: Project overview, purpose, and scope
+   - Middle 4-5 sentences: Detailed technical implementation, methodologies, and challenges
+   - Final 2-3 sentences: Impact, outcomes, and business value
+6. Does NOT add any new features or technologies not mentioned in the original description"""
+                
+                follow_up_response = self.client.chat.completions.create(
+                    model=st.secrets["azure_openai"]["deployment"],
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": follow_up_prompt}
+                    ],
+                    temperature=0.3,
+                    response_format={"type": "text"}
+                )
+                expanded_description = follow_up_response.choices[0].message.content.strip()
+            
+            # Verify keyword relevance and structure
+            keyword_check_prompt = f"""Verify that this project description focuses on the job keywords, is at least 150 words long, and follows the required structure.
+
+Job Keywords: {', '.join(job_keywords)}
+Current Description: {expanded_description}
+
+If the description:
+1. Is not at least 150 words long, or
+2. Does not focus enough on the job keywords, or
+3. Does not follow the required structure:
+   - First 2-3 sentences: Project overview, purpose, and scope
+   - Middle 4-5 sentences: Detailed technical implementation, methodologies, and challenges
+   - Final 2-3 sentences: Impact, outcomes, and business value
+4. Contains any new features or technologies not in the original description
+
+Please provide an improved version that addresses these issues."""
+            
+            final_check_response = self.client.chat.completions.create(
+                model=st.secrets["azure_openai"]["deployment"],
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": keyword_check_prompt}
+                ],
+                temperature=0.3,
+                response_format={"type": "text"}
+            )
+            
+            final_description = final_check_response.choices[0].message.content.strip()
+            
+            # Final verification of word count
+            if len(final_description.split()) < 150:
+                return expanded_description  # Return the longer version if final check made it too short
+            
+            return final_description
+            
+        except Exception as e:
+            st.error(f"Error expanding project description: {str(e)}")
+            return project.get('description', '')
+    
+    def generate_job_specific_title(self, candidate: Dict, job_keywords: Set[str], job_description: str) -> str:
+        """Generate a job-specific title for the candidate based on their profile and job description."""
+        system_prompt = """You are an expert HR professional specializing in job title creation and matching.
+Your task is to create a specific, professional job title that:
+1. Accurately reflects the candidate's experience and skills
+2. Aligns with the job description requirements
+3. Uses industry-standard job titles
+4. Is specific enough to be meaningful but not overly narrow
+5. Matches the seniority level implied by the candidate's experience
+
+Important rules:
+- Use ONLY information from the candidate's profile and job description
+- Do NOT invent or assume experience or skills
+- Choose from standard industry job titles
+- Consider the candidate's actual experience level
+- Match the job description's requirements
+- Be specific to the role and industry
+- Do NOT use generic titles like 'Professional' or 'Specialist' unless specifically required
+- Do NOT use titles that overstate the candidate's experience
+- Return ONLY the job title, no explanation or additional text"""
+
+        user_prompt = f"""Create a specific, professional job title for this candidate based on their profile and the job description.
+
+Candidate Profile:
+- Name: {candidate.get('name', '')}
+- Current Title: {candidate.get('title', '')}
+- Skills: {', '.join(candidate.get('skills', []))}
+- Projects: {json.dumps(candidate.get('projects', []), indent=2)}
+- Education: {json.dumps(candidate.get('education', []), indent=2)}
+
+Job Description Keywords: {', '.join(job_keywords)}
+
+Job Description:
+{job_description}
+
+Create a specific job title that:
+1. Matches the candidate's actual experience and skills
+2. Aligns with the job requirements
+3. Uses industry-standard terminology
+4. Reflects appropriate seniority level
+5. Is specific to the role and industry
+
+Return ONLY the job title, no additional text."""
+
+        try:
+            response = self.client.chat.completions.create(
+                model=st.secrets["azure_openai"]["deployment"],
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.3,
+                response_format={"type": "text"}
+            )
+            
+            title = response.choices[0].message.content.strip()
+            
+            # Verify the title is appropriate
+            verification_prompt = f"""Verify that this job title is appropriate for the candidate and job description.
+
+Proposed Title: {title}
+
+Candidate Profile:
+- Name: {candidate.get('name', '')}
+- Current Title: {candidate.get('title', '')}
+- Skills: {', '.join(candidate.get('skills', []))}
+
+Job Keywords: {', '.join(job_keywords)}
+
+If the title:
+1. Overstates the candidate's experience
+2. Is too generic
+3. Doesn't match the job requirements
+4. Uses non-standard terminology
+
+Please provide a more appropriate title. Otherwise, return the same title."""
+
+            verification_response = self.client.chat.completions.create(
+                model=st.secrets["azure_openai"]["deployment"],
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": verification_prompt}
+                ],
+                temperature=0.3,
+                response_format={"type": "text"}
+            )
+            
+            final_title = verification_response.choices[0].message.content.strip()
+            return final_title
+            
+        except Exception as e:
+            st.error(f"Error generating job title: {str(e)}")
+            return candidate.get('title', '')  # Return original title if there's an error
+
+    def retailor_resume(self, original_resume: Dict, job_keywords: Set[str], job_description: str = "") -> Dict:
         """Retailor the resume to only keep skills and projects that match the job keywords, and rewrite the summary to be job-specific."""
         safe_resume = convert_objectid_to_str(original_resume)
+        
+        # Generate job-specific title
+        if job_description:
+            safe_resume["title"] = self.generate_job_specific_title(safe_resume, job_keywords, job_description)
+        
+        # Expand short project descriptions
+        if "projects" in safe_resume:
+            for project in safe_resume["projects"]:
+                if len(project.get("description", "").split()) < 60:  # If description is less than 60 words
+                    project["description"] = self.expand_project_description(project, job_keywords)
+        
         system_prompt = """
 You are an AI assistant that retailors resumes to match a job description.
 Your ONLY task is to:
 - Filter the skills and projects sections of the resume so that they include ONLY those that directly match the provided job keywords.
+- Include ONLY those skills that directly match the job keywords (case-insensitive, substring match allowed). Do NOT include unrelated or generic skills. Do NOT hallucinate or invent skills.
 - Rewrite the 'summary' field to be a concise, job-specific summary that highlights the candidate's fit for the job, using only information from the resume and the job keywords.
+- Add or update a 'title' field in the resume JSON, inferring a proper, professional job title for the candidate based on the job description and their experience/skills. The title should be a realistic job title (e.g., 'Frontend Developer', 'Data Scientist', 'Project Manager'), not just a single keyword or technology. Do not leave the title blank. If unsure, use the most relevant job title from the job description.
+- In addition to the 'projects' section, also review the 'experience' section. If any work experience description contains relevant projects or achievements that match the job keywords, extract those as additional projects or ensure they are included in the retailored resume's projects section.
 - Do NOT add, invent, or hallucinate any new skills, projects, or summary content.
-- Do NOT change or add any other fields.
-- The output must be the same JSON structure as the input, but with skills, projects, and summary updated as above.
+- Do NOT change or add any other fields except 'title', 'skills', 'projects', and 'summary'.
+- The output must be the same JSON structure as the input, but with skills, projects, summary, and title updated as above.
 - If no skills or projects match, leave those sections empty.
 - Do not change the order or content of any other fields.
 """

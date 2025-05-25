@@ -488,7 +488,8 @@ elif page == "JD-Resume Regeneration":
                                 if matcher:
                                     new_res = matcher.resume_retailor.retailor_resume(
                                         safe_resume,
-                                        st.session_state.extracted_keywords
+                                        st.session_state.extracted_keywords,
+                                        job_description
                                     )
                                     if new_res:
                                         st.success("Resume retailored successfully!")
@@ -505,6 +506,7 @@ elif page == "JD-Resume Regeneration":
                                 resume_data["name"] = st.text_input("Name", value=resume_data.get("name", ""))
                                 resume_data["title"] = st.text_input("Title", value=resume_data.get("title", ""))
                                 resume_data["summary"] = st.text_area("Summary", value=resume_data.get("summary", ""), height=100)
+                                
                                 st.subheader("Education")
                                 for i, edu in enumerate(resume_data["education"]):
                                     st.markdown(f"**Education {i+1}**")
@@ -529,6 +531,7 @@ elif page == "JD-Resume Regeneration":
                                             resume_data["education"].pop(i)
                                 if st.form_submit_button("➕ Add Education"):
                                     resume_data["education"].append({"institution": "", "degree": "", "year": ""})
+
                                 st.subheader("Projects")
                                 for i, proj in enumerate(resume_data["projects"]):
                                     st.markdown(f"**Project {i+1}**")
@@ -548,6 +551,7 @@ elif page == "JD-Resume Regeneration":
                                             resume_data["projects"].pop(i)
                                 if st.form_submit_button("➕ Add Project"):
                                     resume_data["projects"].append({"title": "", "description": ""})
+
                                 st.subheader("Skills")
                                 updated_skills = []
                                 for i, skill in enumerate(resume_data["skills"]):
@@ -1064,9 +1068,9 @@ elif page == "Database Management":
             col1, col2 = st.columns(2)
             with col1:
                 search_field = st.selectbox(
-                    "Search Field", 
+                "Search Field", 
                     ["Name","Employee_ID","Location", "College"]
-                )
+            )
             with col2:
                 search_value = st.text_input("Search Value")
             
