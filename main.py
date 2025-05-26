@@ -16,7 +16,6 @@ from OCR_resume_parser import ResumeParserwithOCR
 from final_retriever import run_retriever, render_formatted_resume  # Retriever engine
 from job_matcher import JobMatcher, JobDescriptionAnalyzer  # Import both classes from job_matcher
 import streamlit.components.v1 as components
-import base64
 # Set page configuration
 st.set_page_config(
     page_title="HR Resume Bot",
@@ -72,14 +71,6 @@ st.markdown("""
     font-size: 18px;
     font-weight: bold;
     margin-bottom: 20px;
-}
-/* Make code blocks wrap and increase their height */
-div[data-testid="stCodeBlock"] pre {
-    white-space: pre-wrap !important;
-    word-break: break-word !important;
-    overflow-x: auto;
-    min-height: 120px;  /* Adjust as needed */
-    font-size: 1.1em;   /* Optional: make text a bit bigger */
 }
 </style>
 """, unsafe_allow_html=True)
@@ -149,8 +140,6 @@ if "extracted_keywords" not in st.session_state:
     st.session_state.extracted_keywords = set()
 if "job_matcher_results" not in st.session_state:
     st.session_state.job_matcher_results = []
-
-MAX_PREVIEW_SIZE = 1_000_000  # 1 MB
 
 def process_uploaded_files(uploaded_files):
     """Process uploaded resume files through the parser"""
@@ -490,26 +479,177 @@ elif page == "JD-Resume Regeneration":
                         st.markdown("#### 📊 Matching Analysis")
                         st.markdown(cand["reason"])
 
-                        # Show PDF preview and download button with size check
+                        # Add retailor resume button
+                        if st.button("🔄 Retailor Resume", key=f"retailor_bulk_{cand['mongo_id']}"):
+                            with st.spinner("Retailoring resume..."):
+                                safe_resume = convert_objectid_to_str(cand["resume"])
+                                # Get matcher from session state
+                                matcher = st.session_state.get('matcher')
+                                if matcher:
+                                    new_res = matcher.resume_retailor.retailor_resume(
+                                        safe_resume,
+                                        st.session_state.extracted_keywords,
+                                        job_description
+                                    )
+                                if new_res:
+                                        st.success("Resume retailored successfully!")
+                                        # Store the retailored resume in session state
+                                        st.session_state[f'resume_data_{cand["mongo_id"]}'] = new_res
+                                        st.session_state[f'pdf_ready_{cand["mongo_id"]}'] = False
+                                else:
+                                    st.error("Error: Job matcher not initialized. Please try searching again.")
+
+                        # Show editable form and PDF generation if resume has been retailored
+                        if f'resume_data_{cand["mongo_id"]}' in st.session_state:
+                            with st.form(key=f"resume_edit_form_{cand['mongo_id']}"):
+                                resume_data = st.session_state[f'resume_data_{cand["mongo_id"]}']
+                                resume_data["name"] = st.text_input("Name", value=resume_data.get("name", ""))
+                                resume_data["title"] = st.text_input("Title", value=resume_data.get("title", ""))
+                                resume_data["summary"] = st.text_area("Summary", value=resume_data.get("summary", ""), height=100)
+                                
+                                st.subheader("Education")
+                                for i, edu in enumerate(resume_data["education"]):
+                                    st.markdown(f"**Education {i+1}**")
+                                    edu_col1, edu_col2, edu_col3 = st.columns(3)
+                                    with edu_col1:
+                                        edu["institution"] = st.text_input(f"Institution {i+1}", value=edu.get("institution", ""), key=f"institution_{cand['mongo_id']}_{i}")
+                                    with edu_col2:
+                                        edu["degree"] = st.text_input(f"Degree {i+1}", value=edu.get("degree", ""), key=f"degree_{cand['mongo_id']}_{i}")
+                                    with edu_col3:
+                                        edu["year"] = st.text_input(f"Year {i+1}", value=edu.get("year", ""), key=f"year_{cand['mongo_id']}_{i}")
+                                    btn_col1, btn_col2, btn_col3 = st.columns([1, 1, 1])
+                                    with btn_col1:
+                                        if st.form_submit_button(f"⬆️ Edu {i+1}"):
+                                            if i > 0:
+                                                resume_data["education"][i - 1], resume_data["education"][i] = resume_data["education"][i], resume_data["education"][i - 1]
+                                    with btn_col2:
+                                        if st.form_submit_button(f"⬇️ Edu {i+1}"):
+                                            if i < len(resume_data["education"]) - 1:
+                                                resume_data["education"][i + 1], resume_data["education"][i] = resume_data["education"][i], resume_data["education"][i + 1]
+                                    with btn_col3:
+                                        if st.form_submit_button(f"🗑️ Delete Edu {i+1}"):
+                                            resume_data["education"].pop(i)
+                                if st.form_submit_button("➕ Add Education"):
+                                    resume_data["education"].append({"institution": "", "degree": "", "year": ""})
+
+                                st.subheader("Projects")
+                                for i, proj in enumerate(resume_data["projects"]):
+                                    st.markdown(f"**Project {i+1}**")
+                                    proj["title"] = st.text_input(f"Title {i+1}", value=proj.get("title", ""), key=f"title_{cand['mongo_id']}_{i}")
+                                    proj["description"] = st.text_area(f"Description {i+1}", value=proj.get("description", ""), key=f"desc_{cand['mongo_id']}_{i}")
+                                    proj_btn_col1, proj_btn_col2, proj_btn_col3 = st.columns([1, 1, 1])
+                                    with proj_btn_col1:
+                                        if st.form_submit_button(f"⬆️ Move Up {i+1}"):
+                                            if i > 0:
+                                                resume_data["projects"][i - 1], resume_data["projects"][i] = resume_data["projects"][i], resume_data["projects"][i - 1]
+                                    with proj_btn_col2:
+                                        if st.form_submit_button(f"⬇️ Move Down {i+1}"):
+                                            if i < len(resume_data["projects"]) - 1:
+                                                resume_data["projects"][i + 1], resume_data["projects"][i] = resume_data["projects"][i], resume_data["projects"][i + 1]
+                                    with proj_btn_col3:
+                                        if st.form_submit_button(f"🗑️ Delete {i+1}"):
+                                            resume_data["projects"].pop(i)
+                                if st.form_submit_button("➕ Add Project"):
+                                    resume_data["projects"].append({"title": "", "description": ""})
+
+                                st.subheader("Skills")
+                                updated_skills = []
+                                for i, skill in enumerate(resume_data["skills"]):
+                                    skill_col1, skill_col2, skill_col3, skill_col4 = st.columns([4, 1, 1, 1])
+                                    with skill_col1:
+                                        skill_input = st.text_input(f"Skill {i+1}", value=skill, key=f"skill_input_{cand['mongo_id']}_{i}")
+                                        updated_skills.append(skill_input)
+                                    with skill_col2:
+                                        if st.form_submit_button(f"⬆️ Skill {i+1}"):
+                                            if i > 0:
+                                                resume_data["skills"][i - 1], resume_data["skills"][i] = resume_data["skills"][i], resume_data["skills"][i - 1]
+                                    with skill_col3:
+                                        if st.form_submit_button(f"⬇️ Skill {i+1}"):
+                                            if i < len(resume_data["skills"]) - 1:
+                                                resume_data["skills"][i + 1], resume_data["skills"][i] = resume_data["skills"][i], resume_data["skills"][i + 1]
+                                    with skill_col4:
+                                        if st.form_submit_button(f" Delete Skill {i+1}"):
+                                            resume_data["skills"].pop(i)
+                                if st.form_submit_button("➕ Add Skill"):
+                                    resume_data["skills"].append("")
+                                submit_button = st.form_submit_button("Update and Generate New PDF")
+                            if submit_button:
+                                resume_data["skills"] = [s.strip() for s in updated_skills if s.strip()]
+                                st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
+                                with st.spinner("Generating PDF..."):
+                                    pdf_file, html_out = PDFUtils.generate_pdf(resume_data)
+                                    pdf_b64 = PDFUtils.get_base64_pdf(pdf_file)
+                                    st.session_state[f'generated_pdf_{cand["mongo_id"]}'] = pdf_file
+                                    st.session_state[f'generated_pdf_b64_{cand["mongo_id"]}'] = pdf_b64
+                                    st.session_state[f'pdf_ready_{cand["mongo_id"]}'] = True
+                                    st.success("PDF generated successfully!")
+
+                        # Show PDF preview and download if available
                         if st.session_state.get(f'pdf_ready_{cand["mongo_id"]}', False):
-                            pdf_bytes = st.session_state[f'generated_pdf_{cand["mongo_id"]}'].getvalue()
-                            if len(pdf_bytes) < MAX_PREVIEW_SIZE:
-                                pdf_b64 = base64.b64encode(pdf_bytes).decode('utf-8')
-                                st.markdown(
-                                    f'<a href="data:application/pdf;base64,{pdf_b64}" target="_blank" style="display:inline-block; margin:10px 0; padding:8px 16px; background:#0068c9; color:white; border-radius:5px; text-decoration:none;">'
-                                    '👁️ View PDF in New Tab</a>',
-                                    unsafe_allow_html=True
-                                )
-                            else:
-                                st.warning("PDF preview is only available for small files (less than 1 MB). Please use the Download button to view large PDFs.")
+                            st.markdown("### 📄 Generated PDF Preview")
+                            pdf_b64 = st.session_state[f'generated_pdf_b64_{cand["mongo_id"]}']
+                            pdf_display = f'<iframe src="data:application/pdf;base64,{pdf_b64}" width="700" height="900" type="application/pdf"></iframe>'
+                            st.markdown(pdf_display, unsafe_allow_html=True)
                             st.download_button(
                                 "📥 Download PDF",
-                                data=pdf_bytes,
-                                file_name=f"{cand.get('name', 'resume').replace(' ', '_')}.pdf",
+                                data=st.session_state[f'generated_pdf_{cand["mongo_id"]}'],
+                                file_name=f"{resume_data.get('name', 'resume').replace(' ', '_')}.pdf",
                                 mime="application/pdf",
                                 key=f"pdf_download_{cand['mongo_id']}"
                             )
 
+                            # Add generate summary, editable text area, and copy button
+                            st.markdown("### 📝 Candidate Pitch Summary")
+                            if st.button("✨ Generate Summary", key=f"generate_summary_{cand['mongo_id']}", use_container_width=True):
+                                with st.spinner("Generating candidate summary..."):
+                                    summary_prompt = (
+                                        f"You are an expert HR professional. You MUST infer and assign a professional job title for the candidate based on the job description and their experience/skills. Do not leave the title blank. If unsure, use the most relevant title from the job description. Then, write a detailed, information-rich, single-paragraph professional summary (8-10 sentences) to introduce the following candidate to a client for a job opportunity. The summary should be written in third person, using formal and business-appropriate language, and should avoid any informal, overly enthusiastic, or emotional expressions. The summary must be comprehensive and cover the candidate's technical expertise, relevant experience, key achievements, major projects, technologies and frameworks used, leadership, teamwork, impact, and educational background as they pertain to the job description. Be specific about programming languages, frameworks, tools, and platforms the candidate has worked with. Mention any certifications or notable accomplishments. The summary should reflect high ethical standards and professionalism, and should not include any bullet points, excitement, or casual language. Use only facts from the provided information and do not invent or exaggerate. The summary should be suitable for inclusion in a formal client communication and should be at least 8-10 sentences long.\n\nReturn your response as a JSON object with two fields: 'title' and 'summary'.\n\nCandidate Information:\nName: {resume_data.get('name', '')}\nTitle: {resume_data.get('title', '')}\nSummary: {resume_data.get('summary', '')}\nSkills: {', '.join(resume_data.get('skills', []))}\n\nProjects:\n{json.dumps(resume_data.get('projects', []), indent=2)}\n\nEducation:\n{json.dumps(resume_data.get('education', []), indent=2)}\n\nJob Description:\n{job_description}"
+                                    )
+                                    try:
+                                        client = AzureOpenAI(
+                                            api_key=st.secrets["azure_openai"]["api_key"],
+                                            api_version=st.secrets["azure_openai"]["api_version"],
+                                            azure_endpoint=st.secrets["azure_openai"]["endpoint"]
+                                        )
+                                        response = client.chat.completions.create(
+                                            model=st.secrets["azure_openai"]["deployment"],
+                                            messages=[
+                                                {"role": "system", "content": "You are an expert HR professional who writes compelling candidate summaries."},
+                                                {"role": "user", "content": summary_prompt}
+                                            ],
+                                            temperature=0.7,
+                                            response_format={"type": "json_object"}
+                                        )
+                                        result = response.choices[0].message.content.strip()
+                                        try:
+                                            result_json = json.loads(result)
+                                            # Fallback: If title is empty, use the first line of the job description or a default
+                                            title = result_json.get("title", "").strip()
+                                            if not title:
+                                                title = job_description.split("\n")[0].split("-")[0].split(":")[0].split(".")[0].strip()
+                                                if not title:
+                                                    title = "Candidate"
+                                            resume_data["title"] = title
+                                            st.session_state[f'candidate_summary_{cand["mongo_id"]}'] = result_json.get("summary", "")
+                                        except Exception as e:
+                                            st.session_state[f'candidate_summary_{cand["mongo_id"]}'] = result
+                                    except Exception as e:
+                                        st.error(f"Error generating summary: {str(e)}")
+                            summary = st.session_state.get(f'candidate_summary_{cand["mongo_id"]}', "")
+                            summary = st.text_area(
+                                "Edit the summary as needed",
+                                value=summary,
+                                height=400,
+                                key=f"summary_edit_{cand['mongo_id']}"
+                            )
+                            # Clean copy button using a hidden textarea inside the HTML component
+                            components.html(f'''
+                                <textarea id="copyText_{cand['mongo_id']}" style="position:absolute;left:-9999px;">{summary}</textarea>
+                                <button style="margin-top:10px;padding:8px 16px;font-size:16px;border-radius:5px;background:#0068c9;color:white;border:none;cursor:pointer;"
+                                    onclick="var copyText = document.getElementById('copyText_{cand['mongo_id']}'); copyText.style.display='block'; copyText.select(); document.execCommand('copy'); copyText.style.display='none'; alert('Copied!');">
+                                    📋 Copy Summary
+                                </button>
+                            ''', height=60)
         elif job_description:
             st.info("👆 Click 'Find Matching Candidates' to start.")
         else:
@@ -663,30 +803,75 @@ elif page == "JD-Resume Regeneration":
                 st.session_state.resume_data = copy.deepcopy(resume_data)
                 with st.spinner("Generating PDF..."):
                     pdf_file, html_out = PDFUtils.generate_pdf(resume_data)
-                    # Store only the BytesIO object in session state
+                    pdf_b64 = PDFUtils.get_base64_pdf(pdf_file)
                     st.session_state.generated_pdf = pdf_file
+                    st.session_state.generated_pdf_b64 = pdf_b64
                     st.session_state.pdf_ready_single = True
                     st.success("PDF generated successfully!")
-
-        # Show PDF preview and download button with size check
+        # After the form, show the PDF preview and download if available
         if st.session_state.get("pdf_ready_single", False):
-            pdf_bytes = st.session_state.generated_pdf.getvalue()
-            if len(pdf_bytes) < MAX_PREVIEW_SIZE:
-                pdf_b64 = base64.b64encode(pdf_bytes).decode('utf-8')
-                st.markdown(
-                    f'<a href="data:application/pdf;base64,{pdf_b64}" target="_blank" style="display:inline-block; margin:10px 0; padding:8px 16px; background:#0068c9; color:white; border-radius:5px; text-decoration:none;">'
-                    '👁️ View PDF in New Tab</a>',
-                    unsafe_allow_html=True
-                )
-            else:
-                st.warning("PDF preview is only available for small files (less than 1 MB). Please use the Download button to view large PDFs.")
+            st.markdown("### 📄 Generated PDF Preview")
+            pdf_b64 = st.session_state.generated_pdf_b64
+            pdf_display = f'<iframe src="data:application/pdf;base64,{pdf_b64}" width="700" height="900" type="application/pdf"></iframe>'
+            st.markdown(pdf_display, unsafe_allow_html=True)
             st.download_button(
-                "📥 Download PDF",
-                data=pdf_bytes,
+                "📄 Download PDF",
+                data=st.session_state.generated_pdf,
                 file_name=f"{st.session_state.resume_data.get('name', 'resume').replace(' ', '_')}.pdf",
                 mime="application/pdf",
                 key="pdf_download_single"
             )
+            st.markdown("### 📝 Candidate Pitch Summary")
+            if st.button("✨ Generate Summary", key="generate_summary_single", use_container_width=True):
+                with st.spinner("Generating candidate summary..."):
+                    summary_prompt = (
+                        f"You are an expert HR professional. You MUST infer and assign a professional job title for the candidate based on the job description and their experience/skills. Do not leave the title blank. If unsure, use the most relevant title from the job description. Then, write a detailed, information-rich, single-paragraph professional summary (8-10 sentences) to introduce the following candidate to a client for a job opportunity. The summary should be written in third person, using formal and business-appropriate language, and should avoid any informal, overly enthusiastic, or emotional expressions. The summary must be comprehensive and cover the candidate's technical expertise, relevant experience, key achievements, major projects, technologies and frameworks used, leadership, teamwork, impact, and educational background as they pertain to the job description. Be specific about programming languages, frameworks, tools, and platforms the candidate has worked with. Mention any certifications or notable accomplishments. The summary should reflect high ethical standards and professionalism, and should not include any bullet points, excitement, or casual language. Use only facts from the provided information and do not invent or exaggerate. The summary should be suitable for inclusion in a formal client communication and should be at least 8-10 sentences long.\n\nReturn your response as a JSON object with two fields: 'title' and 'summary'.\n\nCandidate Information:\nName: {st.session_state.resume_data.get('name', '')}\nTitle: {st.session_state.resume_data.get('title', '')}\nSummary: {st.session_state.resume_data.get('summary', '')}\nSkills: {', '.join(st.session_state.resume_data.get('skills', []))}\n\nProjects:\n{json.dumps(st.session_state.resume_data.get('projects', []), indent=2)}\n\nEducation:\n{json.dumps(st.session_state.resume_data.get('education', []), indent=2)}\n\nJob Description:\n{job_description_single}"
+                    )
+                    try:
+                        client = AzureOpenAI(
+                            api_key=st.secrets["azure_openai"]["api_key"],
+                            api_version=st.secrets["azure_openai"]["api_version"],
+                            azure_endpoint=st.secrets["azure_openai"]["endpoint"]
+                        )
+                        response = client.chat.completions.create(
+                            model=st.secrets["azure_openai"]["deployment"],
+                            messages=[
+                                {"role": "system", "content": "You are an expert HR professional who writes compelling candidate summaries."},
+                                {"role": "user", "content": summary_prompt}
+                            ],
+                            temperature=0.7,
+                            response_format={"type": "json_object"}
+                        )
+                        result = response.choices[0].message.content.strip()
+                        try:
+                            result_json = json.loads(result)
+                            # Fallback: If title is empty, use the first line of the job description or a default
+                            title = result_json.get("title", "").strip()
+                            if not title:
+                                title = job_description_single.split("\n")[0].split("-")[0].split(":")[0].split(".")[0].strip()
+                                if not title:
+                                    title = "Candidate"
+                            st.session_state.resume_data["title"] = title
+                            st.session_state.candidate_summary_single = result_json.get("summary", "")
+                        except Exception as e:
+                            st.session_state.candidate_summary_single = result
+                    except Exception as e:
+                        st.error(f"Error generating summary: {str(e)}")
+            summary = st.session_state.get("candidate_summary_single", "")
+            summary = st.text_area(
+                "Edit the summary as needed",
+                value=summary,
+                height=400,
+                key="summary_edit_single"
+            )
+            # Clean copy button using a hidden textarea inside the HTML component
+            components.html(f'''
+                <textarea id="copyText_single" style="position:absolute;left:-9999px;">{summary}</textarea>
+                <button style="margin-top:10px;padding:8px 16px;font-size:16px;border-radius:5px;background:#0068c9;color:white;border:none;cursor:pointer;"
+                    onclick="var copyText = document.getElementById('copyText_single'); copyText.style.display='block'; copyText.select(); document.execCommand('copy'); copyText.style.display='none'; alert('Copied!');">
+                    📋 Copy Summary
+                </button>
+            ''', height=60)
 
 # -------------------
 # Page: Upload & Process Resumes
