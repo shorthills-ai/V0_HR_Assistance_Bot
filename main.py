@@ -496,9 +496,6 @@ elif page == "JD-Resume Regeneration":
                             pdf_bytes = st.session_state[f'generated_pdf_{cand["mongo_id"]}'].getvalue()
                             if len(pdf_bytes) < MAX_PREVIEW_SIZE:
                                 pdf_b64 = base64.b64encode(pdf_bytes).decode('utf-8')
-                                pdf_display = f'<iframe src="data:application/pdf;base64,{pdf_b64}" width="700" height="900" type="application/pdf"></iframe>'
-                                st.markdown("### 📄 PDF Preview")
-                                st.markdown(pdf_display, unsafe_allow_html=True)
                                 st.markdown(
                                     f'<a href="data:application/pdf;base64,{pdf_b64}" target="_blank" style="display:inline-block; margin:10px 0; padding:8px 16px; background:#0068c9; color:white; border-radius:5px; text-decoration:none;">'
                                     '👁️ View PDF in New Tab</a>',
@@ -677,9 +674,6 @@ elif page == "JD-Resume Regeneration":
             pdf_bytes = st.session_state.generated_pdf.getvalue()
             if len(pdf_bytes) < MAX_PREVIEW_SIZE:
                 pdf_b64 = base64.b64encode(pdf_bytes).decode('utf-8')
-                pdf_display = f'<iframe src="data:application/pdf;base64,{pdf_b64}" width="700" height="900" type="application/pdf"></iframe>'
-                st.markdown("### 📄 PDF Preview")
-                st.markdown(pdf_display, unsafe_allow_html=True)
                 st.markdown(
                     f'<a href="data:application/pdf;base64,{pdf_b64}" target="_blank" style="display:inline-block; margin:10px 0; padding:8px 16px; background:#0068c9; color:white; border-radius:5px; text-decoration:none;">'
                     '👁️ View PDF in New Tab</a>',
