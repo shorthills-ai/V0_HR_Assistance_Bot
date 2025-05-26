@@ -578,8 +578,11 @@ elif page == "JD-Resume Regeneration":
                                 st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
                                 with st.spinner("Generating PDF..."):
                                     pdf_file, html_out = PDFUtils.generate_pdf(resume_data)
-                                    pdf_b64 = PDFUtils.get_base64_pdf(pdf_file)
-                                    st.session_state[f'generated_pdf_{cand["mongo_id"]}'] = pdf_file
+                                    pdf_file.seek(0)
+                                    pdf_bytes = pdf_file.read()
+                                    import base64
+                                    pdf_b64 = base64.b64encode(pdf_bytes).decode("utf-8")
+                                    st.session_state[f'generated_pdf_bytes_{cand["mongo_id"]}'] = pdf_bytes
                                     st.session_state[f'generated_pdf_b64_{cand["mongo_id"]}'] = pdf_b64
                                     st.session_state[f'pdf_ready_{cand["mongo_id"]}'] = True
                                     st.success("PDF generated successfully!")
@@ -592,7 +595,7 @@ elif page == "JD-Resume Regeneration":
                             st.markdown(pdf_display, unsafe_allow_html=True)
                             st.download_button(
                                 "📥 Download PDF",
-                                data=st.session_state[f'generated_pdf_{cand["mongo_id"]}'],
+                                data=st.session_state[f'generated_pdf_bytes_{cand["mongo_id"]}'],
                                 file_name=f"{resume_data.get('name', 'resume').replace(' ', '_')}.pdf",
                                 mime="application/pdf",
                                 key=f"pdf_download_{cand['mongo_id']}"
@@ -803,8 +806,11 @@ elif page == "JD-Resume Regeneration":
                 st.session_state.resume_data = copy.deepcopy(resume_data)
                 with st.spinner("Generating PDF..."):
                     pdf_file, html_out = PDFUtils.generate_pdf(resume_data)
-                    pdf_b64 = PDFUtils.get_base64_pdf(pdf_file)
-                    st.session_state.generated_pdf = pdf_file
+                    pdf_file.seek(0)
+                    pdf_bytes = pdf_file.read()
+                    import base64
+                    pdf_b64 = base64.b64encode(pdf_bytes).decode("utf-8")
+                    st.session_state.generated_pdf_bytes = pdf_bytes
                     st.session_state.generated_pdf_b64 = pdf_b64
                     st.session_state.pdf_ready_single = True
                     st.success("PDF generated successfully!")
@@ -816,7 +822,7 @@ elif page == "JD-Resume Regeneration":
             st.markdown(pdf_display, unsafe_allow_html=True)
             st.download_button(
                 "📄 Download PDF",
-                data=st.session_state.generated_pdf,
+                data=st.session_state.generated_pdf_bytes,
                 file_name=f"{st.session_state.resume_data.get('name', 'resume').replace(' ', '_')}.pdf",
                 mime="application/pdf",
                 key="pdf_download_single"

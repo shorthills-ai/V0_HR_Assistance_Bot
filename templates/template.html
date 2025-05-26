@@ -13,6 +13,7 @@
     body {
       font-family: 'Montserrat', sans-serif;
       background: #fff;
+      font-size: '{{ font_size or 13 }}px';
     }
  
     @page {
@@ -29,6 +30,7 @@
       flex-direction: column;
       background: #fff;
       page-break-after: always;
+      margin-bottom: 20px;
     }
  
     .page::before {
@@ -105,18 +107,18 @@
     }
  
     h1 {
-      font-size: 22px;
+      font-size: '{{ (font_size or 13) + 5 }}px';
       color: #f25d5d;
       margin-top: 20px;
       margin-bottom: 15px;
     }
  
     .title {
-      font-size: 20px;
+      font-size: '{{ (font_size or 13) + 2 }}px';
     }
  
     h2 {
-      font-size: 16px;
+      font-size: '{{ (font_size or 13) + 1 }}px';
       color: #f25d5d;
       margin-top: 20px;
       margin-bottom: 10px;
@@ -124,13 +126,13 @@
     }
  
     h3 {
-      font-size: 15px;
+      font-size: '{{ font_size or 13 }}px';
       color: #f25d5d;
       margin-top: 15px;
     }
  
     p {
-      font-size: 13px;
+      font-size: '{{ font_size or 13 }}px';
       line-height: 1.5;
       color: #000;
     }
@@ -149,7 +151,7 @@
     }
  
     ul li {
-      font-size: 13px;
+      font-size: '{{ font_size or 13 }}px';
       line-height: 1.5;
       margin-bottom: 15px;
       word-break: break-word;
@@ -180,80 +182,85 @@
       color: #000;
       text-decoration: none;
     }
+ 
+    .project-block {
+      margin-bottom: 10px;
+    }
   </style>
 </head>
 <body>
  
-{% set projects_per_page = 3 %}
-{% set total_projects = cv.projects | length %}
-{% for page_num in range(0, (total_projects // projects_per_page) + 1) %}
-  <div class="page">
-    <div class="header">
-      <img src="{{ left_logo }}" class="left-logo">
-      <img src="{{ right_logo }}" class="right-logo">
-    </div>
- 
-    <div class="content">
-      <div class="left-column">
-        {% if page_num == 0 %}
-          <div class="name-title-container">
-            <h1>{{ cv.name }}</h1>
-            <p class="title"><strong>{{ cv.title }}</strong></p>
-          </div>
-        {% endif %}
- 
-        {% if page_num == 0 and cv.skills %}
-          <div class="section-title">Skills</div>
-          <ul>
-            {% for skill in cv.skills %}
-              <li>{{ skill }}</li>
-            {% endfor %}
-          </ul>
-        {% endif %}
- 
-        {% if page_num == 0 and cv.education %}
-          <div class="section-title">Education</div>
-          <ul style="break-inside: avoid;">
-            {% for edu in cv.education %}
-              <li>{{ edu.degree }}<br>{{ edu.institution }}</li>
-            {% endfor %}
-          </ul>
-        {% endif %}
+<div class="page">
+  <div class="header">
+    <img src="{{ left_logo }}" class="left-logo">
+    <img src="{{ right_logo }}" class="right-logo">
+  </div>
+
+  <div class="content">
+    <div class="left-column">
+      <div class="name-title-container">
+        <h1>{{ cv.name }}</h1>
+        <p class="title"><strong>{{ cv.title }}</strong></p>
       </div>
- 
-      <div class="right-column">
-        {% if page_num == 0 and cv.summary %}
-          <h2>Summary</h2>
-          <p>{{ cv.summary }}</p>
-        {% endif %}
- 
-        {% if cv.projects %}
-          {% if page_num == 0 %}
-            <h2>Key Responsibilities:</h2>
-          {% endif %}
-          {% set start = page_num * projects_per_page %}
-          {% set end = start + projects_per_page %}
-          {% for project in cv.projects[start:end] %}
+
+      {% if cv.skills %}
+        <div class="section-title">Skills</div>
+        <ul>
+          {% for skill in cv.skills %}
+            <li>{{ skill }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+
+      {% if cv.certifications %}
+        <div class="section-title">Certifications</div>
+        <ul>
+          {% for cert in cv.certifications %}
+            <li>{{ cert }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+
+      {% if cv.education %}
+        <div class="section-title">Education</div>
+        <ul style="break-inside: avoid;">
+          {% for edu in cv.education %}
+            <li>{{ edu.degree }}<br>{{ edu.institution }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </div>
+
+    <div class="right-column">
+      {% if cv.summary %}
+        <h2>Summary</h2>
+        <p>{{ cv.summary }}</p>
+      {% endif %}
+
+      {% if cv.projects %}
+        <h2>Key Responsibilities:</h2>
+        {% for project in cv.projects %}
+          <div class="project-block">
             {% if project.title %}
               <h3>{{ project.title }}</h3>
             {% endif %}
             {% if project.description %}
               <ul>
-                {% for point in project.description.split('.') if point.strip() %}
+                {% for point in project.description.split('\n') if point.strip() %}
                   <li>{{ point.strip() }}</li>
                 {% endfor %}
               </ul>
             {% endif %}
-          {% endfor %}
-        {% endif %}
-      </div>
-    </div>
- 
-    <div class="footer">
-      © <a href="https://www.shorthills.ai" target="_blank">www.shorthills.ai</a>
+          </div>
+        {% endfor %}
+      {% endif %}
     </div>
   </div>
-{% endfor %}
+
+  <div class="footer">
+    © <a href="https://www.shorthills.ai" target="_blank">www.shorthills.ai</a>
+  </div>
+</div>
  
 </body>
 </html>
