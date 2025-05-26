@@ -465,14 +465,14 @@ elif page == "JD-Resume Regeneration":
                     with st.expander(f"👤 {cand['name']} - Score: {cand['score']}/100", expanded=False):
                         st.markdown(f"""
                         <div class="card">
-                          <div class="candidate-name">{cand['name']}</div>
-                          <div class="contact-info">
+                        <div class="candidate-name">{cand['name']}</div>
+                        <div class="contact-info">
                             📧 {cand['email']} | 📱 {cand['phone']}
-                          </div>
-                          <div class="score-info">
+                        </div>
+                        <div class="score-info">
                             Score: {cand['score']}/100 | 
                             Status: <span class="{cand['status'].lower()}">{cand['status']}</span>
-                          </div>
+                        </div>
                         </div>
                         """, unsafe_allow_html=True)
 
@@ -491,7 +491,7 @@ elif page == "JD-Resume Regeneration":
                                         st.session_state.extracted_keywords,
                                         job_description
                                     )
-                                    if new_res:
+                                if new_res:
                                         st.success("Resume retailored successfully!")
                                         # Store the retailored resume in session state
                                         st.session_state[f'resume_data_{cand["mongo_id"]}'] = new_res
@@ -626,7 +626,6 @@ elif page == "JD-Resume Regeneration":
                                             # Fallback: If title is empty, use the first line of the job description or a default
                                             title = result_json.get("title", "").strip()
                                             if not title:
-                                                # Try to extract a title from the job description (first line or first word before a dash/colon/period)
                                                 title = job_description.split("\n")[0].split("-")[0].split(":")[0].split(".")[0].strip()
                                                 if not title:
                                                     title = "Candidate"
@@ -651,8 +650,6 @@ elif page == "JD-Resume Regeneration":
                                     📋 Copy Summary
                                 </button>
                             ''', height=60)
-            else:
-                st.info("🔍 No matching candidates found.")
         elif job_description:
             st.info("👆 Click 'Find Matching Candidates' to start.")
         else:
@@ -669,6 +666,7 @@ elif page == "JD-Resume Regeneration":
             label = f"Enter candidate {search_field}" if search_field == "Name" else "Enter candidate Employee ID"
             search_value = st.text_input(label)
 
+        # Always show job description input and search button
         job_description_single = st.text_area(
             "Enter Job Description for This Candidate", 
             height=150, 
@@ -714,7 +712,8 @@ elif page == "JD-Resume Regeneration":
                     with st.spinner("🔄 Retailoring resume..."):
                         retailored = matcher.resume_retailor.retailor_resume(
                             convert_objectid_to_str(candidate),
-                            keywords["keywords"]
+                            keywords["keywords"],
+                            job_description_single
                         )
                     
                     if retailored:
