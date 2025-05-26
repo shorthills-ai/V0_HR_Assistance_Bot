@@ -16,6 +16,7 @@ from OCR_resume_parser import ResumeParserwithOCR
 from final_retriever import run_retriever, render_formatted_resume  # Retriever engine
 from job_matcher import JobMatcher, JobDescriptionAnalyzer  # Import both classes from job_matcher
 import streamlit.components.v1 as components
+import base64
 # Set page configuration
 st.set_page_config(
     page_title="HR Resume Bot",
@@ -71,6 +72,14 @@ st.markdown("""
     font-size: 18px;
     font-weight: bold;
     margin-bottom: 20px;
+}
+/* Make code blocks wrap and increase their height */
+div[data-testid="stCodeBlock"] pre {
+    white-space: pre-wrap !important;
+    word-break: break-word !important;
+    overflow-x: auto;
+    min-height: 120px;  /* Adjust as needed */
+    font-size: 1.1em;   /* Optional: make text a bit bigger */
 }
 </style>
 """, unsafe_allow_html=True)
@@ -578,27 +587,31 @@ elif page == "JD-Resume Regeneration":
                                 st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
                                 with st.spinner("Generating PDF..."):
                                     pdf_file, html_out = PDFUtils.generate_pdf(resume_data)
-                                    pdf_b64 = PDFUtils.get_base64_pdf(pdf_file)
+                                    # Store only the BytesIO object in session state
                                     st.session_state[f'generated_pdf_{cand["mongo_id"]}'] = pdf_file
-                                    st.session_state[f'generated_pdf_b64_{cand["mongo_id"]}'] = pdf_b64
                                     st.session_state[f'pdf_ready_{cand["mongo_id"]}'] = True
                                     st.success("PDF generated successfully!")
 
                         # Show PDF preview and download if available
                         if st.session_state.get(f'pdf_ready_{cand["mongo_id"]}', False):
                             st.markdown("### 📄 Generated PDF Preview")
-                            pdf_b64 = st.session_state[f'generated_pdf_b64_{cand["mongo_id"]}']
-                            pdf_display = f'<iframe src="data:application/pdf;base64,{pdf_b64}" width="700" height="900" type="application/pdf"></iframe>'
+                            # Get bytes only when needed for preview
+                            pdf_bytes = st.session_state[f'generated_pdf_{cand["mongo_id"]}'].getvalue()
+                            base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
+                            pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="700" height="900" type="application/pdf"></iframe>'
                             st.markdown(pdf_display, unsafe_allow_html=True)
-                            st.download_button(
+                            
+                            # Download button with explicit bytes conversion
+                            if st.download_button(
                                 "📥 Download PDF",
-                                data=st.session_state[f'generated_pdf_{cand["mongo_id"]}'],
+                                data=pdf_bytes,
                                 file_name=f"{resume_data.get('name', 'resume').replace(' ', '_')}.pdf",
                                 mime="application/pdf",
                                 key=f"pdf_download_{cand['mongo_id']}"
-                            )
+                            ):
+                                st.success("PDF downloaded successfully!")
 
-                            # Add generate summary, editable text area, and copy button
+                            # Add generate summary, editable text area, and copy button (revert to previous logic)
                             st.markdown("### 📝 Candidate Pitch Summary")
                             if st.button("✨ Generate Summary", key=f"generate_summary_{cand['mongo_id']}", use_container_width=True):
                                 with st.spinner("Generating candidate summary..."):
@@ -642,7 +655,7 @@ elif page == "JD-Resume Regeneration":
                                 height=400,
                                 key=f"summary_edit_{cand['mongo_id']}"
                             )
-                            # Clean copy button using a hidden textarea inside the HTML component
+                            st.session_state[f'candidate_summary_{cand["mongo_id"]}'] = summary
                             components.html(f'''
                                 <textarea id="copyText_{cand['mongo_id']}" style="position:absolute;left:-9999px;">{summary}</textarea>
                                 <button style="margin-top:10px;padding:8px 16px;font-size:16px;border-radius:5px;background:#0068c9;color:white;border:none;cursor:pointer;"
@@ -650,6 +663,7 @@ elif page == "JD-Resume Regeneration":
                                     📋 Copy Summary
                                 </button>
                             ''', height=60)
+
         elif job_description:
             st.info("👆 Click 'Find Matching Candidates' to start.")
         else:
@@ -803,24 +817,31 @@ elif page == "JD-Resume Regeneration":
                 st.session_state.resume_data = copy.deepcopy(resume_data)
                 with st.spinner("Generating PDF..."):
                     pdf_file, html_out = PDFUtils.generate_pdf(resume_data)
-                    pdf_b64 = PDFUtils.get_base64_pdf(pdf_file)
+                    # Store only the BytesIO object in session state
                     st.session_state.generated_pdf = pdf_file
-                    st.session_state.generated_pdf_b64 = pdf_b64
                     st.session_state.pdf_ready_single = True
                     st.success("PDF generated successfully!")
+
         # After the form, show the PDF preview and download if available
         if st.session_state.get("pdf_ready_single", False):
             st.markdown("### 📄 Generated PDF Preview")
-            pdf_b64 = st.session_state.generated_pdf_b64
-            pdf_display = f'<iframe src="data:application/pdf;base64,{pdf_b64}" width="700" height="900" type="application/pdf"></iframe>'
+            # Get bytes only when needed for preview
+            pdf_bytes = st.session_state.generated_pdf.getvalue()
+            base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
+            pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="700" height="900" type="application/pdf"></iframe>'
             st.markdown(pdf_display, unsafe_allow_html=True)
-            st.download_button(
-                "📄 Download PDF",
-                data=st.session_state.generated_pdf,
+            
+            # Download button with explicit bytes conversion
+            if st.download_button(
+                "📥 Download PDF",
+                data=pdf_bytes,
                 file_name=f"{st.session_state.resume_data.get('name', 'resume').replace(' ', '_')}.pdf",
                 mime="application/pdf",
                 key="pdf_download_single"
-            )
+            ):
+                st.success("PDF downloaded successfully!")
+
+            # Add generate summary, editable text area, and copy button (revert to previous logic)
             st.markdown("### 📝 Candidate Pitch Summary")
             if st.button("✨ Generate Summary", key="generate_summary_single", use_container_width=True):
                 with st.spinner("Generating candidate summary..."):
@@ -857,14 +878,14 @@ elif page == "JD-Resume Regeneration":
                             st.session_state.candidate_summary_single = result
                     except Exception as e:
                         st.error(f"Error generating summary: {str(e)}")
-            summary = st.session_state.get("candidate_summary_single", "")
+            summary = st.session_state.get('candidate_summary_single', "")
             summary = st.text_area(
                 "Edit the summary as needed",
                 value=summary,
                 height=400,
                 key="summary_edit_single"
             )
-            # Clean copy button using a hidden textarea inside the HTML component
+            st.session_state.candidate_summary_single = summary
             components.html(f'''
                 <textarea id="copyText_single" style="position:absolute;left:-9999px;">{summary}</textarea>
                 <button style="margin-top:10px;padding:8px 16px;font-size:16px;border-radius:5px;background:#0068c9;color:white;border:none;cursor:pointer;"
