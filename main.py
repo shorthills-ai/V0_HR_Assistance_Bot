@@ -16,6 +16,8 @@ from OCR_resume_parser import ResumeParserwithOCR
 from final_retriever import run_retriever, render_formatted_resume  # Retriever engine
 from job_matcher import JobMatcher, JobDescriptionAnalyzer  # Import both classes from job_matcher
 import streamlit.components.v1 as components
+
+import base64
 # Set page configuration
 st.set_page_config(
     page_title="HR Resume Bot",
