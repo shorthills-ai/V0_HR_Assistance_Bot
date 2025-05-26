@@ -7,6 +7,7 @@ import config
 import openai
 from openai import AzureOpenAI
 from bson.objectid import ObjectId
+import time
 
 class JobDescriptionAnalyzer:
     def __init__(self):
@@ -201,6 +202,47 @@ class ResumeRetailor:
     
     def expand_project_description(self, project: Dict, job_keywords: Set[str]) -> str:
         """Expand a project description based on its title and minimal description."""
+        def extract_main_description(text, project_title=None):
+            # Remove everything before a separator or project title
+            separators = ["---", "Project Title:", "**Project Title:", "#", "Below is an improved version", "Improved version", "Enhanced version"]
+            for sep in separators:
+                if sep in text:
+                    text = text.split(sep, 1)[-1].strip()
+            # Remove everything after a breakdown, bullet, or numbered list
+            splitters = [
+                "Here's a breakdown", "Here's a breakdown", "Project Overview", "1.", "2.", "3.", "Project overview", "Breakdown:"
+            ]
+            for splitter in splitters:
+                if splitter in text:
+                    text = text.split(splitter)[0].strip()
+            # Remove markdown/bullet points if any
+            text = re.sub(r"^\s*\d+\.\s.*", "", text, flags=re.MULTILINE)
+            # Remove extra newlines
+            text = re.sub(r"\n{2,}", "\n", text)
+            # Remove leading/trailing whitespace and markdown
+            text = text.strip().lstrip("*").lstrip("#").strip()
+            # Remove the project title if present at the start (with or without markdown/bold)
+            if project_title:
+                lines = text.splitlines()
+                cleaned_lines = []
+                pt = project_title.strip().lower()
+                for line in lines:
+                    l = line.strip().lower().replace("**", "").replace("#", "")
+                    if l.startswith("project title:") or l == pt or l == f"**{pt}**" or l == f"{pt}.":
+                        continue
+                    cleaned_lines.append(line)
+                text = "\n".join(cleaned_lines).strip()
+            return text
+
+        def is_meta_response(text):
+            meta_phrases = [
+                "the current project description", "here's an analysis", "here is an analysis",
+                "here's a breakdown", "here is a breakdown", "review", "analysis", "criteria provided",
+                "based on the criteria", "here's an improved version", "here is an improved version"
+            ]
+            text_lower = text.lower()
+            return any(phrase in text_lower for phrase in meta_phrases) or len(text.split()) < 100
+
         system_prompt = """You are an expert at writing detailed, professional project descriptions for resumes.
 Your task is to expand a minimal project description into a comprehensive, well-structured description that:
 1. Focuses STRICTLY on aspects related to the provided job keywords
@@ -323,11 +365,13 @@ Please provide an improved version that addresses these issues."""
             
             final_description = final_check_response.choices[0].message.content.strip()
             
-            # Final verification of word count
-            if len(final_description.split()) < 150:
-                return expanded_description  # Return the longer version if final check made it too short
-            
-            return final_description
+            desc = extract_main_description(final_description, project.get('title', ''))
+            if is_meta_response(desc):
+                # Fallback to expanded_description or original
+                desc = extract_main_description(expanded_description, project.get('title', ''))
+                if is_meta_response(desc):
+                    desc = project.get('description', '')
+            return desc
             
         except Exception as e:
             st.error(f"Error expanding project description: {str(e)}")
@@ -435,12 +479,7 @@ Please provide a more appropriate title. Otherwise, return the same title."""
         if job_description:
             safe_resume["title"] = self.generate_job_specific_title(safe_resume, job_keywords, job_description)
         
-        # Expand short project descriptions
-        if "projects" in safe_resume:
-            for project in safe_resume["projects"]:
-                if len(project.get("description", "").split()) < 60:  # If description is less than 60 words
-                    project["description"] = self.expand_project_description(project, job_keywords)
-        
+        # --- Retailor the resume first (filtering projects/skills) ---
         system_prompt = """
 You are an AI assistant that retailors resumes to match a job description.
 Your ONLY task is to:
@@ -479,17 +518,26 @@ Instructions:
                 temperature=0.1,
                 response_format={ "type": "json_object" }
             )
-            
             # Parse the response
             retailored_resume = json.loads(response.choices[0].message.content.strip())
+            
+            # --- Custom logic: If no or only one relevant project, use all original projects and expand them ---
+            if "projects" in retailored_resume:
+                filtered_projects = retailored_resume["projects"]
+                if len(filtered_projects) <= 1:
+                    # Use all original projects if too few relevant ones
+                    filtered_projects = safe_resume.get("projects", [])
+                # Expand all project descriptions with a delay
+                for project in filtered_projects:
+                    project["description"] = self.expand_project_description(project, job_keywords)
+                    time.sleep(1)  # Add a 1 second delay between expansions
+                retailored_resume["projects"] = filtered_projects
             
             # Validate the structure
             if not self._validate_resume_structure(safe_resume, retailored_resume):
                 st.error("Error: Retailored resume structure doesn't match original")
                 return safe_resume
-                
             return retailored_resume
-            
         except Exception as e:
             st.error(f"Error retailoring resume: {str(e)}")
             return safe_resume
