@@ -472,26 +472,26 @@ Please provide a more appropriate title. Otherwise, return the same title."""
             return candidate.get('title', '')  # Return original title if there's an error
 
     def retailor_resume(self, original_resume: Dict, job_keywords: Set[str], job_description: str = "") -> Dict:
-        """Retailor the resume to only keep skills and projects that match the job keywords, and rewrite the summary to be job-specific."""
+        """Retailor the resume to keep all original skills unchanged and only modify projects based on job relevance."""
         safe_resume = convert_objectid_to_str(original_resume)
         
         # Generate job-specific title
         if job_description:
             safe_resume["title"] = self.generate_job_specific_title(safe_resume, job_keywords, job_description)
         
-        # --- Retailor the resume first (filtering projects/skills) ---
+        # --- Retailor the resume (keeping all skills, only modifying projects) ---
         system_prompt = """
 You are an AI assistant that retailors resumes to match a job description.
 Your ONLY task is to:
-- Filter the skills and projects sections of the resume so that they include ONLY those that directly match the provided job keywords.
-- Include ONLY those skills that directly match the job keywords (case-insensitive, substring match allowed). Do NOT include unrelated or generic skills. Do NOT hallucinate or invent skills.
-- Rewrite the 'summary' field to be a concise, job-specific summary that highlights the candidate's fit for the job, using only information from the resume and the job keywords.
+- KEEP ALL ORIGINAL SKILLS UNCHANGED - Do NOT filter or remove any skills from the candidate's original skill set
+- Filter the projects section to include ONLY those projects that directly match or relate to the provided job keywords
+- Rewrite the 'summary' field to be a concise, job-specific summary that highlights the candidate's fit for the job, using only information from the resume and the job keywords
 - Add or update a 'title' field in the resume JSON, inferring a proper, professional job title for the candidate based on the job description and their experience/skills. The title should be a realistic job title (e.g., 'Frontend Developer', 'Data Scientist', 'Project Manager'), not just a single keyword or technology. Do not leave the title blank. If unsure, use the most relevant job title from the job description.
 - In addition to the 'projects' section, also review the 'experience' section. If any work experience description contains relevant projects or achievements that match the job keywords, extract those as additional projects or ensure they are included in the retailored resume's projects section.
 - Do NOT add, invent, or hallucinate any new skills, projects, or summary content.
-- Do NOT change or add any other fields except 'title', 'skills', 'projects', and 'summary'.
-- The output must be the same JSON structure as the input, but with skills, projects, summary, and title updated as above.
-- If no skills or projects match, leave those sections empty.
+- Do NOT change or add any other fields except 'title', 'projects', and 'summary'. KEEP 'skills' exactly as provided in the original resume.
+- The output must be the same JSON structure as the input, but with projects, summary, and title updated as above.
+- If no projects match, leave the projects section empty.
 - Do not change the order or content of any other fields.
 """
         user_prompt = f"""
@@ -502,11 +502,11 @@ Original Resume:
 {json.dumps(safe_resume, indent=2)}
 
 Instructions:
-1. Filter the 'skills' list to include ONLY those that match the job keywords (case-insensitive, substring match allowed).
+1. KEEP ALL ORIGINAL SKILLS UNCHANGED - Copy the entire 'skills' list exactly as provided in the original resume.
 2. Filter the 'projects' list to include ONLY those that mention any of the job keywords in their description or technologies.
 3. Rewrite the 'summary' field to be a 2-4 sentence summary that highlights the candidate's fit for the job, using only information from the resume and the job keywords.
 4. Do NOT add or invent any new skills, projects, or summary content.
-5. Return the complete resume in the exact same JSON format, with only the filtered skills, projects, and new summary.
+5. Return the complete resume in the exact same JSON format, with the original skills kept unchanged, filtered projects, and new summary.
 """
         try:
             response = self.client.chat.completions.create(
@@ -520,6 +520,9 @@ Instructions:
             )
             # Parse the response
             retailored_resume = json.loads(response.choices[0].message.content.strip())
+            
+            # IMPORTANT: Ensure all original skills are preserved
+            retailored_resume["skills"] = safe_resume.get("skills", [])
             
             # --- Custom logic: If no or only one relevant project, use all original projects and expand them ---
             if "projects" in retailored_resume:

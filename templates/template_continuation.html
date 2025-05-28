@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap');
+    body { font-family: 'Montserrat', sans-serif; background: #fff; font-size: '{{ font_size or 12 }}px'; color: #222; }
+    .page { width: 21cm; height: 29.7cm; margin: auto; display: flex; flex-direction: column; background: #fff; border: 3px solid #f25d5d; }
+    .content { flex: 1; display: flex; padding: 0 18px 18px 0; overflow: hidden; }
+    .left-column {
+      width: 38%;
+      min-width: 200px;
+      max-width: 100%;
+      padding-right: 8px;
+      flex-direction: column;
+      overflow-wrap: break-word;
+    }
+    .left-column > *:not(.name-title-container) { padding: 0 18px 0 18px; }
+    .section-title { font-family: 'Montserrat', sans-serif; color: #f25d5d; font-size: 13px; text-transform: uppercase; margin-top: 18px; margin-bottom: 4px; font-weight: 700; letter-spacing: 1px; }
+    .custom-arrow-list { list-style: none; padding-left: 0; margin-top: 8px; margin-bottom: 8px; }
+    .custom-arrow-list li {
+      position: relative;
+      padding-left: 22px;
+      margin-bottom: 2px;
+      font-size: 12px;
+      font-family: 'Montserrat', sans-serif;
+      font-weight: 400;
+      color: #222;
+      overflow-wrap: break-word;
+      white-space: normal;
+      max-width: 100%;
+      padding-right: 0;
+      break-inside: auto;
+      page-break-inside: auto;
+    }
+    .custom-arrow-list li::before { content: ''; position: absolute; left: 0; top: 2px; width: 14px; height: 14px; background: url('data:image/svg+xml;utf8,<svg fill="%23f25d5d" height="14" viewBox="0 0 24 24" width="14" xmlns="http://www.w3.org/2000/svg"><path d="M8 5v14l11-7z"/></svg>') no-repeat center center; background-size: contain; display: inline-block; }
+    .right-column { width: 70%; padding-left: 18px; margin-top: 0; }
+    .project-title { color: #f25d5d; font-weight: 700; font-size: 13px; margin-bottom: 4px; margin-top: 12px; letter-spacing: 1px; }
+    .project-block { margin-bottom: 8px; }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 18px 28px 10px 28px;
+    }
+    .left-logo {
+      height: 36px;
+    }
+    .right-logo {
+      height: 44px;
+    }
+    .left-column ul,
+    .left-column li {
+      overflow-wrap: break-word;
+      white-space: normal;
+      max-width: 100%;
+    }
+    .left-column .section-title,
+    .left-column ul,
+    .left-column li {
+      box-sizing: border-box;
+    }
+    .left-column li,
+    .custom-arrow-list li {
+      overflow-wrap: break-word;
+      white-space: normal;
+      max-width: 100%;
+      font-size: 12px;
+      padding-right: 0;
+      break-inside: auto;
+      page-break-inside: auto;
+    }
+    ul {
+      list-style-type: disc;
+      padding-left: 18px;
+      margin-top: 8px;
+      margin-bottom: 8px;
+    }
+    ul li {
+      font-family: 'Montserrat', sans-serif;
+      font-size: 12px;
+      line-height: 1.5;
+      margin-bottom: 6px;
+      word-break: break-word;
+      overflow-wrap: break-word;
+      white-space: pre-line;
+    }
+    .institution {
+      display: block;
+      font-size: 11px;
+      color: #666;
+      margin-top: 0px;
+      line-height: 1.1;
+    }
+    strong {
+      font-weight: 700;
+      color: #f25d5d;
+    }
+    em {
+      font-style: italic;
+      color: #666;
+      font-size: 11px;
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <img src="{{ left_logo }}" class="left-logo">
+    <img src="{{ right_logo }}" class="right-logo">
+  </div>
+  <div class="content" style="margin-top: 24px;">
+    <div class="left-column">
+      {% if left_column.skills %}
+        {% if section_headings.skills %}
+          <div class="section-title">Skills</div>
+        {% endif %}
+        <ul class="custom-arrow-list">
+          {% for skill in left_column.skills %}
+            <li>{{ skill }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+      {% if left_column.certifications and left_column.certifications|length > 0 %}
+        {% if section_headings.certifications %}
+          <div class="section-title">Certifications</div>
+        {% endif %}
+        <ul class="custom-arrow-list">
+          {% for cert in left_column.certifications %}
+            {% if cert %}
+              <li>
+                {% if cert.title is defined %}
+                  {{ cert.title }}
+                  {% if cert.issuer %}
+                    <br><em>{{ cert.issuer }}</em>
+                  {% endif %}
+                  {% if cert.year %}
+                    <br>{{ cert.year }}
+                  {% endif %}
+                {% else %}
+                  {{ cert }}
+                {% endif %}
+              </li>
+            {% endif %}
+          {% endfor %}
+        </ul>
+      {% endif %}
+      {% if left_column.education and left_column.education|length > 0 %}
+        {% if section_headings.education %}
+          <div class="section-title">Education</div>
+        {% endif %}
+        <ul class="custom-arrow-list">
+          {% for edu in left_column.education %}
+            {% if edu %}
+              <li>
+                {% if edu.degree is defined and edu.institution is defined %}
+                  {{ edu.degree }}<br><strong>{{ edu.institution }}</strong>
+                {% else %}
+                  {{ edu }}
+                {% endif %}
+              </li>
+            {% endif %}
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </div>
+    <div class="right-column">
+      {% for project in right_column %}
+        <div class="project-block">
+          {% if project.title %}
+            <h3 class="project-title">Project {{ loop.index + project_index_offset }}: {{ project.title }}</h3>
+          {% endif %}
+          {% if project.description %}
+            <ul class="custom-arrow-list">
+              {% for point in project.description.split('\n') if point.strip() %}
+                <li>{{ point.strip() }}</li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+</body>
+</html>
