@@ -16,6 +16,8 @@ from OCR_resume_parser import ResumeParserwithOCR
 from final_retriever import run_retriever, render_formatted_resume  # Retriever engine
 from job_matcher import JobMatcher, JobDescriptionAnalyzer  # Import both classes from job_matcher
 import streamlit.components.v1 as components
+
+import base64
 # Set page configuration
 st.set_page_config(
     page_title="HR Resume Bot",
@@ -532,6 +534,39 @@ elif page == "JD-Resume Regeneration":
                                 if st.form_submit_button("➕ Add Education"):
                                     resume_data["education"].append({"institution": "", "degree": "", "year": ""})
 
+                                st.subheader("Certifications")
+                                # Ensure certifications is a list
+                                if "certifications" not in resume_data:
+                                    resume_data["certifications"] = []
+                                for i, cert in enumerate(resume_data["certifications"]):
+                                    st.markdown(f"**Certification {i+1}**")
+                                    # Handle both string and dict formats for certifications
+                                    if isinstance(cert, dict):
+                                        cert["title"] = st.text_input(f"Certification Title {i+1}", value=cert.get("title", ""), key=f"cert_title_{cand['mongo_id']}_{i}")
+                                        cert["issuer"] = st.text_input(f"Issuing Organization {i+1}", value=cert.get("issuer", ""), key=f"cert_issuer_{cand['mongo_id']}_{i}")
+                                        cert["year"] = st.text_input(f"Year {i+1}", value=cert.get("year", ""), key=f"cert_year_{cand['mongo_id']}_{i}")
+                                    else:
+                                        # Convert string to dict format
+                                        cert_title = st.text_input(f"Certification Title {i+1}", value=str(cert), key=f"cert_title_{cand['mongo_id']}_{i}")
+                                        cert_issuer = st.text_input(f"Issuing Organization {i+1}", value="", key=f"cert_issuer_{cand['mongo_id']}_{i}")
+                                        cert_year = st.text_input(f"Year {i+1}", value="", key=f"cert_year_{cand['mongo_id']}_{i}")
+                                        resume_data["certifications"][i] = {"title": cert_title, "issuer": cert_issuer, "year": cert_year}
+                                    
+                                    cert_btn_col1, cert_btn_col2, cert_btn_col3 = st.columns([1, 1, 1])
+                                    with cert_btn_col1:
+                                        if st.form_submit_button(f"⬆️ Cert {i+1}"):
+                                            if i > 0:
+                                                resume_data["certifications"][i - 1], resume_data["certifications"][i] = resume_data["certifications"][i], resume_data["certifications"][i - 1]
+                                    with cert_btn_col2:
+                                        if st.form_submit_button(f"⬇️ Cert {i+1}"):
+                                            if i < len(resume_data["certifications"]) - 1:
+                                                resume_data["certifications"][i + 1], resume_data["certifications"][i] = resume_data["certifications"][i], resume_data["certifications"][i + 1]
+                                    with cert_btn_col3:
+                                        if st.form_submit_button(f"🗑️ Delete Cert {i+1}"):
+                                            resume_data["certifications"].pop(i)
+                                if st.form_submit_button("➕ Add Certification"):
+                                    resume_data["certifications"].append({"title": "", "issuer": "", "year": ""})
+
                                 st.subheader("Projects")
                                 for i, proj in enumerate(resume_data["projects"]):
                                     st.markdown(f"**Project {i+1}**")
@@ -577,12 +612,11 @@ elif page == "JD-Resume Regeneration":
                                 resume_data["skills"] = [s.strip() for s in updated_skills if s.strip()]
                                 st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
                                 with st.spinner("Generating PDF..."):
-                                    pdf_file, html_out = PDFUtils.generate_pdf(resume_data)
-                                    pdf_file.seek(0)
-                                    pdf_bytes = pdf_file.read()
-                                    import base64
-                                    pdf_b64 = base64.b64encode(pdf_bytes).decode("utf-8")
-                                    st.session_state[f'generated_pdf_bytes_{cand["mongo_id"]}'] = pdf_bytes
+                                    # Use extracted keywords from session state if available
+                                    keywords = st.session_state.get('extracted_keywords', None)
+                                    pdf_file, html_out = PDFUtils.generate_pdf(resume_data, keywords=keywords)
+                                    pdf_b64 = PDFUtils.get_base64_pdf(pdf_file)
+                                    st.session_state[f'generated_pdf_{cand["mongo_id"]}'] = pdf_file
                                     st.session_state[f'generated_pdf_b64_{cand["mongo_id"]}'] = pdf_b64
                                     st.session_state[f'pdf_ready_{cand["mongo_id"]}'] = True
                                     st.success("PDF generated successfully!")
@@ -595,7 +629,7 @@ elif page == "JD-Resume Regeneration":
                             st.markdown(pdf_display, unsafe_allow_html=True)
                             st.download_button(
                                 "📥 Download PDF",
-                                data=st.session_state[f'generated_pdf_bytes_{cand["mongo_id"]}'],
+                                data=st.session_state[f'generated_pdf_{cand["mongo_id"]}'],
                                 file_name=f"{resume_data.get('name', 'resume').replace(' ', '_')}.pdf",
                                 mime="application/pdf",
                                 key=f"pdf_download_{cand['mongo_id']}"
@@ -725,6 +759,7 @@ elif page == "JD-Resume Regeneration":
                         st.session_state.resume_data.setdefault("education", [])
                         st.session_state.resume_data.setdefault("projects", [])
                         st.session_state.resume_data.setdefault("skills", [])
+                        st.session_state.resume_data.setdefault("certifications", [])
                         st.session_state.resume_data.setdefault("name", "")
                         st.session_state.resume_data.setdefault("title", "")
                         st.session_state.resume_data.setdefault("summary", "")
@@ -761,6 +796,40 @@ elif page == "JD-Resume Regeneration":
                             resume_data["education"].pop(i)
                 if st.form_submit_button("➕ Add Education"):
                     resume_data["education"].append({"institution": "", "degree": "", "year": ""})
+
+                st.subheader("Certifications")
+                # Ensure certifications is a list
+                if "certifications" not in resume_data:
+                    resume_data["certifications"] = []
+                for i, cert in enumerate(resume_data["certifications"]):
+                    st.markdown(f"**Certification {i+1}**")
+                    # Handle both string and dict formats for certifications
+                    if isinstance(cert, dict):
+                        cert["title"] = st.text_input(f"Certification Title {i+1}", value=cert.get("title", ""), key=f"cert_title_single_{i}")
+                        cert["issuer"] = st.text_input(f"Issuing Organization {i+1}", value=cert.get("issuer", ""), key=f"cert_issuer_single_{i}")
+                        cert["year"] = st.text_input(f"Year {i+1}", value=cert.get("year", ""), key=f"cert_year_single_{i}")
+                    else:
+                        # Convert string to dict format
+                        cert_title = st.text_input(f"Certification Title {i+1}", value=str(cert), key=f"cert_title_single_{i}")
+                        cert_issuer = st.text_input(f"Issuing Organization {i+1}", value="", key=f"cert_issuer_single_{i}")
+                        cert_year = st.text_input(f"Year {i+1}", value="", key=f"cert_year_single_{i}")
+                        resume_data["certifications"][i] = {"title": cert_title, "issuer": cert_issuer, "year": cert_year}
+                    
+                    cert_btn_col1, cert_btn_col2, cert_btn_col3 = st.columns([1, 1, 1])
+                    with cert_btn_col1:
+                        if st.form_submit_button(f"⬆️ Cert {i+1}"):
+                            if i > 0:
+                                resume_data["certifications"][i - 1], resume_data["certifications"][i] = resume_data["certifications"][i], resume_data["certifications"][i - 1]
+                    with cert_btn_col2:
+                        if st.form_submit_button(f"⬇️ Cert {i+1}"):
+                            if i < len(resume_data["certifications"]) - 1:
+                                resume_data["certifications"][i + 1], resume_data["certifications"][i] = resume_data["certifications"][i], resume_data["certifications"][i + 1]
+                    with cert_btn_col3:
+                        if st.form_submit_button(f"🗑️ Delete Cert {i+1}"):
+                            resume_data["certifications"].pop(i)
+                if st.form_submit_button("➕ Add Certification"):
+                    resume_data["certifications"].append({"title": "", "issuer": "", "year": ""})
+
                 st.subheader("Projects")
                 for i, proj in enumerate(resume_data["projects"]):
                     st.markdown(f"**Project {i+1}**")
@@ -805,12 +874,11 @@ elif page == "JD-Resume Regeneration":
                 resume_data["skills"] = [s.strip() for s in updated_skills if s.strip()]
                 st.session_state.resume_data = copy.deepcopy(resume_data)
                 with st.spinner("Generating PDF..."):
-                    pdf_file, html_out = PDFUtils.generate_pdf(resume_data)
-                    pdf_file.seek(0)
-                    pdf_bytes = pdf_file.read()
-                    import base64
-                    pdf_b64 = base64.b64encode(pdf_bytes).decode("utf-8")
-                    st.session_state.generated_pdf_bytes = pdf_bytes
+                    # Use extracted keywords from session state if available
+                    keywords = st.session_state.get('extracted_keywords', None)
+                    pdf_file, html_out = PDFUtils.generate_pdf(resume_data, keywords=keywords)
+                    pdf_b64 = PDFUtils.get_base64_pdf(pdf_file)
+                    st.session_state.generated_pdf = pdf_file
                     st.session_state.generated_pdf_b64 = pdf_b64
                     st.session_state.pdf_ready_single = True
                     st.success("PDF generated successfully!")
@@ -822,7 +890,7 @@ elif page == "JD-Resume Regeneration":
             st.markdown(pdf_display, unsafe_allow_html=True)
             st.download_button(
                 "📄 Download PDF",
-                data=st.session_state.generated_pdf_bytes,
+                data=st.session_state.generated_pdf,
                 file_name=f"{st.session_state.resume_data.get('name', 'resume').replace(' ', '_')}.pdf",
                 mime="application/pdf",
                 key="pdf_download_single"
