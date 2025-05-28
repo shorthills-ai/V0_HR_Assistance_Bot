@@ -16,7 +16,7 @@ from OCR_resume_parser import ResumeParserwithOCR
 from final_retriever import run_retriever, render_formatted_resume  # Retriever engine
 from job_matcher import JobMatcher, JobDescriptionAnalyzer  # Import both classes from job_matcher
 import streamlit.components.v1 as components
-
+import uuid
 import base64
 # Set page configuration
 st.set_page_config(
@@ -624,17 +624,37 @@ elif page == "JD-Resume Regeneration":
                         if st.session_state.get(f'pdf_ready_{cand["mongo_id"]}', False):
                             st.markdown("### 📄 Generated PDF Preview")
                             pdf_b64 = st.session_state[f'generated_pdf_b64_{cand["mongo_id"]}']
-                            pdf_display = f'<iframe src="data:application/pdf;base64,{pdf_b64}" width="700" height="900" type="application/pdf"></iframe>'
-                            st.markdown(pdf_display, unsafe_allow_html=True)
+                            # pdf_display = f'<iframe src="data:application/pdf;base64,{pdf_b64}" width="700" height="900" type="application/pdf"></iframe>'
+                            # st.markdown(pdf_display, unsafe_allow_html=True)
 
+                            # Info message and link to open in new tab
+                            st.info("If the PDF is not viewable above, your browser may not support embedded PDF viewing.")
+                            pdf_filename = f"{st.session_state.resume_data.get('name', 'resume').replace(' ', '_')}.pdf"
+                            link_id = f"open_pdf_link_{uuid.uuid4().hex}"
 
-
-
-
-
-
-
-
+                            components.html(f"""
+                                <a id="{link_id}" style="margin:10px 0;display:inline-block;padding:8px 16px;font-size:16px;border-radius:5px;background:#0068c9;color:white;text-decoration:none;border:none;cursor:pointer;">
+                                    🔗 Click here to open the PDF in a new tab
+                                </a>
+                                <script>
+                                const b64Data = "{pdf_b64}";
+                                const byteCharacters = atob(b64Data);
+                                const byteNumbers = new Array(byteCharacters.length);
+                                for (let i = 0; i < byteCharacters.length; i++) {{
+                                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                                }}
+                                const byteArray = new Uint8Array(byteNumbers);
+                                const blob = new Blob([byteArray], {{type: "application/pdf"}});
+                                const blobUrl = URL.createObjectURL(blob);
+                                const link = document.getElementById("{link_id}");
+                                link.href = blobUrl;
+                                link.target = "_blank";
+                                link.rel = "noopener noreferrer";
+                                link.onclick = function() {{
+                                    setTimeout(function(){{URL.revokeObjectURL(blobUrl)}}, 10000);
+                                }};
+                                </script>
+                            """, height=80)
                             st.download_button(
                                 "📥 Download PDF",
                                 data=st.session_state[f'generated_pdf_{cand["mongo_id"]}'],
@@ -642,7 +662,8 @@ elif page == "JD-Resume Regeneration":
                                 mime="application/pdf",
                                 key=f"pdf_download_{cand['mongo_id']}"
                             )
-
+# ...existing code...
+                       
                             # Add generate summary, editable text area, and copy button
                             st.markdown("### 📝 Candidate Pitch Summary")
                             if st.button("✨ Generate Summary", key=f"generate_summary_{cand['mongo_id']}", use_container_width=True):
@@ -891,11 +912,43 @@ elif page == "JD-Resume Regeneration":
                     st.session_state.pdf_ready_single = True
                     st.success("PDF generated successfully!")
         # After the form, show the PDF preview and download if available
+        
+        # ...existing code...
         if st.session_state.get("pdf_ready_single", False):
             st.markdown("### 📄 Generated PDF Preview")
             pdf_b64 = st.session_state.generated_pdf_b64
-            pdf_display = f'<iframe src="data:application/pdf;base64,{pdf_b64}" width="700" height="900" type="application/pdf"></iframe>'
-            st.markdown(pdf_display, unsafe_allow_html=True)
+            # pdf_display = f'<iframe src="data:application/pdf;base64,{pdf_b64}" width="700" height="900" type="application/pdf"></iframe>'
+            # st.markdown(pdf_display, unsafe_allow_html=True)
+
+            # Info message and link to open in new tab
+            st.info("If the PDF is not viewable above, your browser may not support embedded PDF viewing.")
+            link_id = f"open_pdf_link_{uuid.uuid4().hex}"
+
+            components.html(f"""
+                <a id="{link_id}" style="margin:10px 0;display:inline-block;padding:8px 16px;font-size:16px;border-radius:5px;background:#0068c9;color:white;text-decoration:none;border:none;cursor:pointer;">
+                    🔗 Click here to open the PDF in a new tab
+                </a>
+                <script>
+                const b64Data = "{pdf_b64}";
+                const byteCharacters = atob(b64Data);
+                const byteNumbers = new Array(byteCharacters.length);
+                for (let i = 0; i < byteCharacters.length; i++) {{
+                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                }}
+                const byteArray = new Uint8Array(byteNumbers);
+                const blob = new Blob([byteArray], {{type: "application/pdf"}});
+                const blobUrl = URL.createObjectURL(blob);
+                const link = document.getElementById("{link_id}");
+                link.href = blobUrl;
+                link.target = "_blank";
+                link.rel = "noopener noreferrer";
+                link.onclick = function() {{
+                    setTimeout(function(){{URL.revokeObjectURL(blobUrl)}}, 10000);
+                }};
+                </script>
+            """, height=80)
+            
+
             st.download_button(
                 "📄 Download PDF",
                 data=st.session_state.generated_pdf,
@@ -903,6 +956,7 @@ elif page == "JD-Resume Regeneration":
                 mime="application/pdf",
                 key="pdf_download_single"
             )
+
             st.markdown("### 📝 Candidate Pitch Summary")
             if st.button("✨ Generate Summary", key="generate_summary_single", use_container_width=True):
                 with st.spinner("Generating candidate summary..."):
