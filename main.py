@@ -620,25 +620,25 @@ elif page == "JD-Resume Regeneration":
                                     st.session_state[f'generated_pdf_b64_{cand["mongo_id"]}'] = pdf_b64
                                     st.session_state[f'pdf_ready_{cand["mongo_id"]}'] = True
                                     st.success("PDF generated successfully!")
-# ...existing code...
+# ...existing 
                         if st.session_state.get(f'pdf_ready_{cand["mongo_id"]}', False):
-                            st.markdown("### 📄 Generated PDF")
+                            st.markdown("### 📄 Generated PDF Preview")
                             pdf_b64 = st.session_state[f'generated_pdf_b64_{cand["mongo_id"]}']
-                            file_name = f"{resume_data.get('name', 'resume').replace(' ', '_')}.pdf"
-                            # HTML link to open PDF in new tab
-                            pdf_link = f'''
-                                <a href="data:application/pdf;base64,{pdf_b64}" target="_blank" download="{file_name}">
-                                    <button style="margin:10px;padding:10px 20px;font-size:16px;border-radius:5px;background:#0068c9;color:white;border:none;cursor:pointer;">
-                                        📄 Open PDF in New Tab
-                                    </button>
-                                </a>
-                            '''
-                            st.markdown(pdf_link, unsafe_allow_html=True)
-                            # Optional: Also provide a download button
+                            pdf_display = f'<iframe src="data:application/pdf;base64,{pdf_b64}" width="700" height="900" type="application/pdf"></iframe>'
+                            st.markdown(pdf_display, unsafe_allow_html=True)
+
+
+
+
+
+
+
+
+
                             st.download_button(
                                 "📥 Download PDF",
                                 data=st.session_state[f'generated_pdf_{cand["mongo_id"]}'],
-                                file_name=file_name,
+                                file_name=f"{resume_data.get('name', 'resume').replace(' ', '_')}.pdf",
                                 mime="application/pdf",
                                 key=f"pdf_download_{cand['mongo_id']}"
                             )
