@@ -20,3 +20,4 @@ python-dotenv
 azure-identity
 azure-core
 weasyprint
+python-docx
