@@ -18,6 +18,107 @@ class PDFUtils:
         return base64.b64encode(pdf_file.read()).decode("utf-8")
 
     @staticmethod
+    def analyze_space_usage(data, max_space_per_page=12):
+        """
+        Analyze space usage for projects without generating the full PDF.
+        Returns detailed information about how space will be distributed.
+        
+        Args:
+            data: Resume data dictionary
+            max_space_per_page: Maximum space units per page for projects (default: 12)
+            
+        Returns:
+            dict: Contains space analysis information including:
+                - total_projects: Number of projects
+                - total_estimated_space: Total space needed for all projects
+                - estimated_pages: Number of pages needed
+                - space_per_page: List of space used per page
+                - remaining_space_per_page: List of remaining space per page
+                - project_details: List of project space breakdowns
+        """
+        def estimate_project_size(project):
+            """Estimate how much space a project will take"""
+            size = 1  # Base size for project title
+            if project.get('description'):
+                bullets = project['description'].split('\n')
+                bullets = [b.strip() for b in bullets if b.strip()]
+                size += len(bullets)
+            return size
+        
+        projects = data.get('projects', [])
+        
+        if not projects:
+            return {
+                'total_projects': 0,
+                'total_estimated_space': 0,
+                'estimated_pages': 1,
+                'space_per_page': [0],
+                'remaining_space_per_page': [max_space_per_page],
+                'project_details': []
+            }
+        
+        # Analyze each project
+        project_details = []
+        total_estimated_space = 0
+        
+        for i, project in enumerate(projects):
+            project_size = estimate_project_size(project)
+            bullet_count = 0
+            if project.get('description'):
+                bullets = project['description'].split('\n')
+                bullet_count = len([b.strip() for b in bullets if b.strip()])
+            
+            project_info = {
+                'index': i + 1,
+                'title': project.get('title', 'Untitled'),
+                'title_space': 1,
+                'bullet_count': bullet_count,
+                'total_space': project_size
+            }
+            project_details.append(project_info)
+            total_estimated_space += project_size
+        
+        # Distribute projects to pages
+        pages = []
+        current_page = []
+        current_page_size = 0
+        space_per_page = []
+        remaining_space_per_page = []
+        
+        for project in projects:
+            project_size = estimate_project_size(project)
+            
+            # If this project can't fit on current page, start a new page
+            if current_page_size + project_size > max_space_per_page and current_page:
+                space_per_page.append(current_page_size)
+                remaining_space_per_page.append(max_space_per_page - current_page_size)
+                pages.append(current_page)
+                current_page = []
+                current_page_size = 0
+            
+            # Add project to current page
+            current_page.append(project)
+            current_page_size += project_size
+        
+        # Add the last page if it has content
+        if current_page:
+            space_per_page.append(current_page_size)
+            remaining_space_per_page.append(max_space_per_page - current_page_size)
+            pages.append(current_page)
+        
+        estimated_pages = len(pages) if pages else 1
+        
+        return {
+            'total_projects': len(projects),
+            'total_estimated_space': total_estimated_space,
+            'estimated_pages': estimated_pages,
+            'space_per_page': space_per_page,
+            'remaining_space_per_page': remaining_space_per_page,
+            'project_details': project_details,
+            'max_space_per_page': max_space_per_page
+        }
+
+    @staticmethod
     def generate_pdf(data, template_path="templates/template.html",
                      bg_path="templates/bg.png",
                      left_logo_path="templates/left_logo_small.png",
@@ -48,91 +149,181 @@ class PDFUtils:
             return '\n'.join(bullets)
 
         def bold_keywords(text, keywords):
+            """Bold keywords in text with improved matching"""
             if not text or not keywords:
                 return text
             
-            # Convert to string if not already
+            # Convert text to string if it's not already
             text = str(text)
+            original_text = text  # Keep for debugging
+            
+            # Convert keywords to list and filter out empty ones
+            if isinstance(keywords, set):
+                keyword_list = list(keywords)
+            elif isinstance(keywords, (list, tuple)):
+                keyword_list = list(keywords)
+            else:
+                return text
+            
+            # Filter and clean keywords
+            valid_keywords = []
+            for kw in keyword_list:
+                if kw and isinstance(kw, str) and len(kw.strip()) >= 2:
+                    valid_keywords.append(kw.strip())
+            
+            if not valid_keywords:
+                return text
             
             # Sort keywords by length (longest first) to avoid partial matches
-            sorted_keywords = sorted(keywords, key=len, reverse=True)
+            valid_keywords.sort(key=len, reverse=True)
             
-            for kw in sorted_keywords:
-                if len(kw.strip()) < 2:  # Skip very short keywords
-                    continue
-                    
+            # Apply bolding for each keyword
+            for keyword in valid_keywords:
                 # Escape special regex characters
-                escaped_kw = re.escape(kw.strip())
+                escaped_keyword = re.escape(keyword)
                 
-                # Use regex for whole word, case-insensitive match
-                # Avoid bolding if already bolded
-                pattern = r'(?i)(?<!<strong>)\b({})\b(?!</strong>)'.format(escaped_kw)
-                text = re.sub(pattern, r'<strong>\1</strong>', text)
+                # Create multiple patterns to catch different cases
+                patterns = [
+                    # Exact match with word boundaries (case insensitive)
+                    r'(?i)(?<!<strong>)\b(' + escaped_keyword + r')\b(?![^<]*</strong>)',
+                    # Match within parentheses like "(DRDO)"
+                    r'(?i)(?<!<strong>)\(([^)]*' + escaped_keyword + r'[^)]*)\)(?![^<]*</strong>)',
+                    # Match acronyms and abbreviations
+                    r'(?i)(?<!<strong>)(' + escaped_keyword + r')(?![^<]*</strong>)'
+                ]
                 
-                # For technical terms that might be part of compound words
-                # Only if the keyword is longer than 3 characters
-                if len(kw.strip()) > 3:
-                    pattern_substring = r'(?i)(?<!<strong>)({})(?!</strong>)'.format(escaped_kw)
-                    # Only apply if not already bolded and not part of a larger bolded section
-                    if f'<strong>{kw.lower()}</strong>' not in text.lower():
-                        text = re.sub(pattern_substring, r'<strong>\1</strong>', text)
+                for pattern in patterns:
+                    if re.search(pattern, text):
+                        print(f"DEBUG: Found keyword '{keyword}' in text: {text[:50]}...")
+                        text = re.sub(pattern, r'<strong>\1</strong>', text)
+                        break
+            
+            # Debug output if text changed
+            if text != original_text:
+                print(f"DEBUG: Text transformed from: {original_text}")
+                print(f"DEBUG: Text transformed to: {text}")
             
             return text
 
-        # Get keywords as a set (if provided)
-        keywords_set = set(keywords) if keywords else set()
+        # Create a deep copy to avoid modifying original data
+        data_copy = copy.deepcopy(data)
+        
+        # Convert keywords to proper format
+        if keywords:
+            if isinstance(keywords, dict) and 'keywords' in keywords:
+                keywords_to_use = keywords['keywords']
+            else:
+                keywords_to_use = keywords
+        else:
+            keywords_to_use = set()
 
-        # Automatically convert project descriptions to bullet points
-        projects = data.get('projects', [])
-        for project in projects:
-            if 'description' in project and isinstance(project['description'], str):
-                desc = paragraph_to_bullets(project['description'])
-                project['description'] = bold_keywords(desc, keywords_set)
-            if 'title' in project and isinstance(project['title'], str):
-                project['title'] = bold_keywords(project['title'], keywords_set)
+        # Debug: Print keywords being used (remove in production)
+        print(f"DEBUG: Keywords being used for bolding: {keywords_to_use}")
+        print(f"DEBUG: Type of keywords: {type(keywords_to_use)}")
+
+        # Bold keywords in certifications - ENHANCED with better debugging
+        if 'certifications' in data_copy and isinstance(data_copy['certifications'], list):
+            print(f"DEBUG: Processing {len(data_copy['certifications'])} certifications")
+            for i, cert in enumerate(data_copy['certifications']):
+                print(f"DEBUG: Processing certification {i}: {cert}")
+                if isinstance(cert, dict):
+                    # Bold certification title
+                    if 'title' in cert and cert['title']:
+                        print(f"DEBUG: Bolding certification title: {cert['title']}")
+                        original_title = cert['title']
+                        cert['title'] = bold_keywords(cert['title'], keywords_to_use)
+                        if original_title != cert['title']:
+                            print(f"DEBUG: Certification title bolded - '{original_title}' -> '{cert['title']}'")
+                    
+                    # Bold certification issuer/organization
+                    if 'issuer' in cert and cert['issuer']:
+                        print(f"DEBUG: Bolding certification issuer: {cert['issuer']}")
+                        original_issuer = cert['issuer']
+                        cert['issuer'] = bold_keywords(cert['issuer'], keywords_to_use)
+                        if original_issuer != cert['issuer']:
+                            print(f"DEBUG: Certification issuer bolded - '{original_issuer}' -> '{cert['issuer']}'")
+                        else:
+                            print(f"DEBUG: No keywords found in issuer: {cert['issuer']}")
+                    
+                    # Also check for 'organization' field if it exists
+                    if 'organization' in cert and cert['organization']:
+                        print(f"DEBUG: Bolding certification organization: {cert['organization']}")
+                        original_org = cert['organization']
+                        cert['organization'] = bold_keywords(cert['organization'], keywords_to_use)
+                        if original_org != cert['organization']:
+                            print(f"DEBUG: Certification organization bolded - '{original_org}' -> '{cert['organization']}'")
+                
+                elif isinstance(cert, str) and cert:
+                    # Handle string certifications
+                    print(f"DEBUG: Bolding string certification: {cert}")
+                    original_cert = cert
+                    data_copy['certifications'][i] = bold_keywords(cert, keywords_to_use)
+                    if original_cert != data_copy['certifications'][i]:
+                        print(f"DEBUG: String certification bolded - '{original_cert}' -> '{data_copy['certifications'][i]}'")
+                    else:
+                        print(f"DEBUG: No keywords found in string certification: {cert}")
+
+        # Debug: Print keywords being used (remove in production)
+        print(f"DEBUG: Keywords being used for bolding: {keywords_to_use}")
 
         # Bold keywords in summary
-        if 'summary' in data and isinstance(data['summary'], str):
-            data['summary'] = bold_keywords(data['summary'], keywords_set)
-
-        # Bold keywords in title
-        if 'title' in data and isinstance(data['title'], str):
-            data['title'] = bold_keywords(data['title'], keywords_set)
+        if 'summary' in data_copy and data_copy['summary']:
+            original_summary = data_copy['summary']
+            data_copy['summary'] = bold_keywords(original_summary, keywords_to_use)
+            print(f"DEBUG: Summary bolding - Original: {original_summary[:100]}...")
+            print(f"DEBUG: Summary bolding - Modified: {data_copy['summary'][:100]}...")
 
         # Bold keywords in skills
-        if 'skills' in data and isinstance(data['skills'], list):
-            data['skills'] = [bold_keywords(skill, keywords_set) for skill in data['skills']]
+        if 'skills' in data_copy and isinstance(data_copy['skills'], list):
+            for i, skill in enumerate(data_copy['skills']):
+                if skill:
+                    original_skill = skill
+                    data_copy['skills'][i] = bold_keywords(skill, keywords_to_use)
+                    if original_skill != data_copy['skills'][i]:
+                        print(f"DEBUG: Skill bolded - '{original_skill}' -> '{data_copy['skills'][i]}'")
+
+        # Bold keywords in projects
+        if 'projects' in data_copy and isinstance(data_copy['projects'], list):
+            for project in data_copy['projects']:
+                # Bold project title
+                if 'title' in project and project['title']:
+                    original_title = project['title']
+                    project['title'] = bold_keywords(project['title'], keywords_to_use)
+                    if original_title != project['title']:
+                        print(f"DEBUG: Project title bolded - '{original_title}' -> '{project['title']}'")
+                
+                # Bold project description
+                if 'description' in project and project['description']:
+                    # First convert to bullets
+                    desc = paragraph_to_bullets(project['description'])
+                    # Then bold keywords
+                    original_desc = desc
+                    project['description'] = bold_keywords(desc, keywords_to_use)
+                    if original_desc != project['description']:
+                        print(f"DEBUG: Project description bolded")
 
         # Bold keywords in education
-        if 'education' in data and isinstance(data['education'], list):
-            for edu in data['education']:
+        if 'education' in data_copy and isinstance(data_copy['education'], list):
+            for edu in data_copy['education']:
                 if isinstance(edu, dict):
                     if 'degree' in edu and edu['degree']:
-                        edu['degree'] = bold_keywords(edu['degree'], keywords_set)
+                        original_degree = edu['degree']
+                        edu['degree'] = bold_keywords(edu['degree'], keywords_to_use)
+                        if original_degree != edu['degree']:
+                            print(f"DEBUG: Education degree bolded - '{original_degree}' -> '{edu['degree']}'")
                     if 'institution' in edu and edu['institution']:
-                        edu['institution'] = bold_keywords(edu['institution'], keywords_set)
-                    if 'year' in edu and edu['year']:
-                        edu['year'] = bold_keywords(str(edu['year']), keywords_set)
+                        original_institution = edu['institution']
+                        edu['institution'] = bold_keywords(edu['institution'], keywords_to_use)
+                        if original_institution != edu['institution']:
+                            print(f"DEBUG: Education institution bolded - '{original_institution}' -> '{edu['institution']}'")
 
-        # Bold keywords in certifications
-        if 'certifications' in data and isinstance(data['certifications'], list):
-            for i, cert in enumerate(data['certifications']):
-                if isinstance(cert, dict):
-                    if 'title' in cert and cert['title']:
-                        cert['title'] = bold_keywords(cert['title'], keywords_set)
-                    if 'issuer' in cert and cert['issuer']:
-                        cert['issuer'] = bold_keywords(cert['issuer'], keywords_set)
-                    if 'year' in cert and cert['year']:
-                        cert['year'] = bold_keywords(str(cert['year']), keywords_set)
-                elif isinstance(cert, str):
-                    data['certifications'][i] = bold_keywords(cert, keywords_set)
 
-        # --- New logic for section-aware multi-page handling ---
+        # --- Section-aware multi-page handling (using modified data) ---
         continuation_template = env.get_template('templates/template_continuation.html')
 
         # Estimate how many items fit in the left and right columns per page
         LEFT_COL_MAX = 28  # Total items per page in left column
-        RIGHT_COL_MAX = 2  # projects per page
+        RIGHT_COL_MAX = 3  # projects per page
 
         font_size = 13  # Default font size for all pages
 
@@ -149,9 +340,9 @@ class PDFUtils:
 
         def distribute_sections_to_pages(left_column_data, max_items_per_page):
             """Distribute sections across pages, keeping each section intact"""
-            sections = ['skills', 'certifications', 'education']
+            sections = ['skills', 'education', 'certifications']
             pages = []
-            current_page = {'skills': [], 'certifications': [], 'education': []}
+            current_page = {'skills': [], 'education': [], 'certifications': []}
             current_page_size = 0
             
             for section_name in sections:
@@ -167,7 +358,7 @@ class PDFUtils:
                     if any(current_page.values()):
                         pages.append(current_page)
                     # Start new page
-                    current_page = {'skills': [], 'certifications': [], 'education': []}
+                    current_page = {'skills': [], 'education': [], 'certifications': []}
                     current_page_size = 0
                 
                 # Add entire section to current page
@@ -180,11 +371,11 @@ class PDFUtils:
             
             return pages
 
-        # Prepare left column content
+        # Prepare left column content using the keyword-bolded data
         left_column = {
-            'skills': data.get('skills', []),
-            'certifications': data.get('certifications', []),
-            'education': data.get('education', [])
+            'skills': data_copy.get('skills', []),
+            'certifications': data_copy.get('certifications', []),
+            'education': data_copy.get('education', [])
         }
 
         # Distribute sections across pages
@@ -201,20 +392,56 @@ class PDFUtils:
                 size += len(bullets)
             return size
         
-        def distribute_projects_to_pages(projects, max_space_per_page=12):
+        def analyze_project_space_usage(projects, max_space_per_page=28):
+            """Analyze and report detailed space usage for projects"""
+            print(f"\n=== DETAILED PROJECT SPACE ANALYSIS ===")
+            print(f"Max space per page: {max_space_per_page}")
+            print(f"Total projects: {len(projects)}")
+            
+            total_estimated_space = 0
+            for i, project in enumerate(projects):
+                project_size = estimate_project_size(project)
+                total_estimated_space += project_size
+                bullet_count = 0
+                if project.get('description'):
+                    bullets = project['description'].split('\n')
+                    bullet_count = len([b.strip() for b in bullets if b.strip()])
+                
+                print(f"  Project {i+1}: '{project.get('title', 'Untitled')[:50]}...'")
+                print(f"    - Title space: 1")
+                print(f"    - Bullet points: {bullet_count}")
+                print(f"    - Total estimated space: {project_size}")
+            
+            estimated_pages = (total_estimated_space + max_space_per_page - 1) // max_space_per_page  # Ceiling division
+            print(f"\nTotal estimated space needed: {total_estimated_space}")
+            print(f"Estimated pages needed: {estimated_pages}")
+            print(f"Average space per page: {total_estimated_space / estimated_pages if estimated_pages > 0 else 0:.1f}")
+            print(f"========================================\n")
+            
+            return total_estimated_space, estimated_pages
+        
+        def distribute_projects_to_pages(projects, max_space_per_page=28):
             """Distribute projects across pages based on content size"""
             if not projects:
-                return [[]]
+                return [[]], [max_space_per_page]  # Return empty page and full space remaining
                 
             pages = []
             current_page = []
             current_page_size = 0
+            space_remaining_per_page = []  # Track remaining space for each page
             
-            for project in projects:
+            print(f"DEBUG: Starting project distribution with max_space_per_page={max_space_per_page}")
+            
+            for i, project in enumerate(projects):
                 project_size = estimate_project_size(project)
+                print(f"DEBUG: Project {i+1} '{project.get('title', 'Untitled')}' estimated size: {project_size}")
                 
                 # If this project can't fit on current page, start a new page
                 if current_page_size + project_size > max_space_per_page and current_page:
+                    remaining_space = max_space_per_page - current_page_size
+                    space_remaining_per_page.append(remaining_space)
+                    print(f"DEBUG: Page {len(pages)+1} completed with {len(current_page)} projects, used space: {current_page_size}, remaining space: {remaining_space}")
+                    
                     pages.append(current_page)
                     current_page = []
                     current_page_size = 0
@@ -222,32 +449,58 @@ class PDFUtils:
                 # Add project to current page
                 current_page.append(project)
                 current_page_size += project_size
+                print(f"DEBUG: Added project to page {len(pages)+1}, current page size: {current_page_size}/{max_space_per_page}")
             
             # Add the last page if it has content
             if current_page:
+                remaining_space = max_space_per_page - current_page_size
+                space_remaining_per_page.append(remaining_space)
+                print(f"DEBUG: Final page {len(pages)+1} completed with {len(current_page)} projects, used space: {current_page_size}, remaining space: {remaining_space}")
                 pages.append(current_page)
             
-            return pages if pages else [[]]
+            # If no pages were created, create an empty page
+            if not pages:
+                pages = [[]]
+                space_remaining_per_page = [max_space_per_page]
+            
+            print(f"DEBUG: Project distribution complete. Total pages: {len(pages)}")
+            print(f"DEBUG: Space remaining per page: {space_remaining_per_page}")
+            
+            return pages, space_remaining_per_page
         
-        projects = data.get('projects', [])
-        right_chunks = distribute_projects_to_pages(projects, max_space_per_page=12)
+        projects = data_copy.get('projects', [])
+        
+        # First analyze the space usage
+        total_estimated_space, estimated_pages = analyze_project_space_usage(projects, max_space_per_page=12)
+        
+        # Then distribute projects to pages
+        right_chunks, space_remaining = distribute_projects_to_pages(projects, max_space_per_page=12)
+
+        # Print space utilization summary
+        print(f"\n=== PROJECT SPACE UTILIZATION SUMMARY ===")
+        for i, (chunk, remaining) in enumerate(zip(right_chunks, space_remaining)):
+            used_space = 12 - remaining  # max_space_per_page - remaining
+            utilization_percent = (used_space / 12) * 100
+            print(f"Page {i+1}: {len(chunk)} projects, {used_space}/12 space used ({utilization_percent:.1f}%), {remaining} space remaining")
+        print(f"==========================================\n")
 
         # Ensure we have at least one page for each column
         if not left_pages:
             left_pages = [{'skills': [], 'certifications': [], 'education': []}]
         if not right_chunks:
             right_chunks = [[]]
+            space_remaining = [12]  # Full space available if no projects
 
         # First page: render with first page of left column and first chunk of right column
-        data_copy = copy.deepcopy(data)
+        first_page_data = copy.deepcopy(data_copy)
         first_left_page = left_pages[0]
-        data_copy['skills'] = first_left_page['skills']
-        data_copy['certifications'] = first_left_page['certifications']
-        data_copy['education'] = first_left_page['education']
-        data_copy['projects'] = right_chunks[0]
+        first_page_data['skills'] = first_left_page['skills']
+        first_page_data['certifications'] = first_left_page['certifications']
+        first_page_data['education'] = first_left_page['education']
+        first_page_data['projects'] = right_chunks[0]
         
         html_pages = [template.render(
-            cv=data_copy,
+            cv=first_page_data,
             bg_image=f"data:image/png;base64,{bg_image}",
             left_logo=f"data:image/png;base64,{left_logo_b64}",
             right_logo=f"data:image/png;base64,{right_logo_b64}",
@@ -299,5 +552,3 @@ class PDFUtils:
         pdf_file = io.BytesIO()
         HTML(string=full_html).write_pdf(pdf_file)
         return pdf_file, full_html
-
- 
