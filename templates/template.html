@@ -12,7 +12,7 @@
       padding: 0;
     }
     body {
-      font-family: 'Montserrat', sans-serif;
+      font-family: 'Montserrat';
       background: #fff;
       font-size: '{{ font_size or 12 }}px';
       color: #222;
@@ -90,8 +90,8 @@
       width:100%;
     }
     .name-title-container h1 {
-      font-family: 'Montserrat', sans-serif;
-      font-size: 28px;
+      font-family: 'Montserrat';
+      font-size: 20px;
       font-weight: 700;
       color: #f25d5d;
       margin-bottom: 6px;
@@ -99,7 +99,7 @@
       margin-bottom: 25px;
     }
     .title {
-      font-family: 'Montserrat', sans-serif;
+      font-family: 'Montserrat';
       font-size: 16px;
       font-weight: 400;
       color: #222;
@@ -111,7 +111,7 @@
       margin-top: 0;
     }
     h1, h2, h3 {
-      font-family: 'Montserrat', sans-serif;
+      font-family: 'Montserrat';
       font-weight: 700;
       color: #f25d5d;
       margin-bottom: 8px;
@@ -153,7 +153,7 @@
       padding-left: 22px;
       margin-bottom: 6px;
       font-size: 12px;
-      font-family: 'Montserrat', sans-serif;
+      font-family: 'Montserrat';
       font-weight: 400;
       color: #222;
     }
@@ -165,10 +165,10 @@
       color: #f25d5d;
       font-size: 13px;
       font-weight: bold;
-      font-family: 'Montserrat', sans-serif;
+      font-family: 'Montserrat';
     }
     p {
-      font-family: 'Montserrat', sans-serif;
+      font-family: 'Montserrat';
       font-size: 12px;
       line-height: 1.5;
       color: #222;
@@ -181,7 +181,7 @@
       margin-bottom: 8px;
     }
     ul li {
-      font-family: 'Montserrat', sans-serif;
+      font-family: 'Montserrat';
       font-size: 12px;
       line-height: 1.5;
       margin-bottom: 6px;
@@ -190,7 +190,7 @@
       white-space: pre-line;
     }
     .section-title {
-      font-family: 'Montserrat', sans-serif;
+      font-family: 'Montserrat';
       color: #f25d5d;
       font-size: 13px;
       text-transform: uppercase;
@@ -210,7 +210,7 @@
       padding-left: 22px;
       margin-bottom: 6px;
       font-size: 12px;
-      font-family: 'Montserrat', sans-serif;
+      font-family: 'Montserrat';
       font-weight: 400;
       color: #222;
       overflow-wrap: break-word;
@@ -246,7 +246,7 @@
       font-size: 12px;
       color: #fff;
       width: 100%;
-      font-family: 'Montserrat', sans-serif;
+      font-family: 'Montserrat';
     }
     .footer a {
       color: #fff;
@@ -254,6 +254,8 @@
     }
     .project-block {
       margin-bottom: 8px;
+      page-break-inside: avoid;
+      break-inside: avoid;
     }
     .left-column li,
     .custom-arrow-list li {
@@ -262,8 +264,8 @@
       max-width: 100%;
       font-size: 12px;
       padding-right: 0;
-      break-inside: auto;
-      page-break-inside: auto;
+      break-inside: avoid;
+      page-break-inside: avoid;
     }
     .left-column .section-title,
     .left-column ul,
@@ -272,7 +274,12 @@
     }
     strong {
       font-weight: 700;
-      color: #f25d5d;
+      color: black;
+      /* text-decoration: underline; */
+    }
+    .edu-institution {
+      font-weight: 700;
+      color: #222;
     }
     em {
       font-style: italic;
@@ -291,35 +298,15 @@
   <div class="content">
     <div class="left-column">
       <div class="name-title-container">
-        <h1>{{ cv.name }}</h1>
-        <p class="title"><strong>{{ cv.title }}</strong></p>
+        <h1>{{ cv.name|safe }}</h1>
+        <p class="title"><strong>{{ cv.title|safe }}</strong></p>
       </div>
       {% if cv.skills %}
         <div class="section-title" style="margin-top: 27px;">Skills</div>
         <ul class="custom-arrow-list">
           <div style="height: 12.5px;"></div>
           {% for skill in cv.skills %}
-            <li>{{ skill }}</li>
-          {% endfor %}
-        </ul>
-      {% endif %}
-      {% if cv.certifications %}
-        <div class="section-title">Certifications</div>
-        <ul class="custom-arrow-list">
-          {% for cert in cv.certifications %}
-            <li>
-              {% if cert.title is defined %}
-                {{ cert.title }}
-                {% if cert.issuer %}
-                  <br><em>{{ cert.issuer }}</em>
-                {% endif %}
-                {% if cert.year %}
-                  <br>{{ cert.year }}
-                {% endif %}
-              {% else %}
-                {{ cert }}
-              {% endif %}
-            </li>
+            <li>{{ skill|safe }}</li>
           {% endfor %}
         </ul>
       {% endif %}
@@ -327,15 +314,35 @@
         <div class="section-title">Education</div>
         <ul class="custom-arrow-list">
           {% for edu in cv.education %}
-            <li>{{ edu.degree }}<br><strong>{{ edu.institution }}</strong></li>
+            <li>{{ edu.degree|safe }}<br><span class="edu-institution">{{ edu.institution|safe }}</span></li>
           {% endfor %}
         </ul>
       {% endif %}
+      {% if cv.certifications %}
+      <div class="section-title">Certifications</div>
+      <ul class="custom-arrow-list">
+        {% for cert in cv.certifications %}
+          <li>
+            {% if cert.title is defined %}
+              {{ cert.title|safe }}
+              {% if cert.issuer %}
+                <br><strong>{{ cert.issuer|safe }}</strong>
+              {% endif %}
+              {% if cert.year %}
+                <br>{{ cert.year|safe }}
+              {% endif %}
+            {% else %}
+              {{ cert|safe }}
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
     </div>
     <div class="right-column">
       {% if cv.summary %}
         <div class="section-title" style="margin-top: 0;">Summary</div>
-        <p>{{ cv.summary }}</p>
+        <p>{{ cv.summary|safe }}</p>
       {% endif %}
       {% if cv.projects %}
         <div style="height: 18px;"></div>
@@ -344,12 +351,12 @@
         {% for project in cv.projects %}
           <div class="project-block">
             {% if project.title %}
-              <h3 class="project-title">Project {{ loop.index }}: {{ project.title }}</h3>
+              <h3 class="project-title">Project {{ loop.index }}: {{ project.title|safe }}</h3>
             {% endif %}
             {% if project.description %}
               <ul class="custom-arrow-list">
                 {% for point in project.description.split('\n') if point.strip() %}
-                  <li>{{ point.strip() }}</li>
+                  <li>{{ point.strip()|safe }}</li>
                 {% endfor %}
               </ul>
             {% endif %}

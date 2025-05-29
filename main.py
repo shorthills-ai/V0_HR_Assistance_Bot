@@ -7,6 +7,7 @@ import asyncio
 from datetime import datetime
 import copy
 from pdf_utils import PDFUtils  # Import the new class
+from docx_utils import DocxUtils  # Import the DocxUtils class
 # Import your existing modules
 from openai import AzureOpenAI
 from llama_resume_parser import ResumeParser
@@ -612,7 +613,7 @@ elif page == "JD-Resume Regeneration":
                                 resume_data["skills"] = [s.strip() for s in updated_skills if s.strip()]
                                 st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
                                 with st.spinner("Generating PDF..."):
-                                    # Use extracted keywords from session state if available
+                                    # Always use extracted keywords from session state
                                     keywords = st.session_state.get('extracted_keywords', None)
                                     pdf_file, html_out = PDFUtils.generate_pdf(resume_data, keywords=keywords)
                                     pdf_b64 = PDFUtils.get_base64_pdf(pdf_file)
@@ -633,6 +634,16 @@ elif page == "JD-Resume Regeneration":
                                 file_name=f"{resume_data.get('name', 'resume').replace(' ', '_')}.pdf",
                                 mime="application/pdf",
                                 key=f"pdf_download_{cand['mongo_id']}"
+                            )
+                            # --- Download Word Button ---
+                            keywords = st.session_state.get('extracted_keywords', None)
+                            word_file = DocxUtils.generate_docx(resume_data, keywords=keywords)
+                            st.download_button(
+                                "📝 Download Word",
+                                data=word_file,
+                                file_name=f"{resume_data.get('name', 'resume').replace(' ', '_')}.docx",
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                key=f"word_download_{cand['mongo_id']}"
                             )
 
                             # Add generate summary, editable text area, and copy button
@@ -744,6 +755,8 @@ elif page == "JD-Resume Regeneration":
                     st.success(f"Found candidate: {candidate.get('name', 'Unknown')}")
                     analyzer = JobDescriptionAnalyzer()
                     keywords = analyzer.extract_keywords(job_description_single)
+                    # Store keywords in session state for PDF generation
+                    st.session_state.extracted_keywords = keywords["keywords"]
                     matcher = JobMatcher()
                     
                     with st.spinner("🔄 Retailoring resume..."):
@@ -874,7 +887,7 @@ elif page == "JD-Resume Regeneration":
                 resume_data["skills"] = [s.strip() for s in updated_skills if s.strip()]
                 st.session_state.resume_data = copy.deepcopy(resume_data)
                 with st.spinner("Generating PDF..."):
-                    # Use extracted keywords from session state if available
+                    # Always use extracted keywords from session state
                     keywords = st.session_state.get('extracted_keywords', None)
                     pdf_file, html_out = PDFUtils.generate_pdf(resume_data, keywords=keywords)
                     pdf_b64 = PDFUtils.get_base64_pdf(pdf_file)
@@ -894,6 +907,16 @@ elif page == "JD-Resume Regeneration":
                 file_name=f"{st.session_state.resume_data.get('name', 'resume').replace(' ', '_')}.pdf",
                 mime="application/pdf",
                 key="pdf_download_single"
+            )
+            # --- Download Word Button ---
+            keywords = st.session_state.get('extracted_keywords', None)
+            word_file = DocxUtils.generate_docx(st.session_state.resume_data, keywords=keywords)
+            st.download_button(
+                "📝 Download Word",
+                data=word_file,
+                file_name=f"{st.session_state.resume_data.get('name', 'resume').replace(' ', '_')}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                key="word_download_single"
             )
             st.markdown("### 📝 Candidate Pitch Summary")
             if st.button("✨ Generate Summary", key="generate_summary_single", use_container_width=True):
