@@ -391,7 +391,7 @@ class PDFUtils:
                 # Count bullet points in description
                 bullets = project['description'].split('\n')
                 bullets = [b.strip() for b in bullets if b.strip()]
-                size += len(bullets)
+                size += int(len(bullets) * 0.6)
             return size
         
         def analyze_project_space_usage(projects, max_space_per_page=32):
@@ -519,6 +519,12 @@ class PDFUtils:
         # Then distribute projects to pages
         right_chunks, space_remaining, project_numbers_per_page = distribute_projects_to_pages(projects, max_space_per_page=20)
 
+        # --- Fix: Pad project_numbers_per_page and space_remaining to match right_chunks ---
+        while len(project_numbers_per_page) < len(right_chunks):
+            project_numbers_per_page.append([])
+        while len(space_remaining) < len(right_chunks):
+            space_remaining.append(15)
+
         # Print space utilization summary
         print(f"\n=== PROJECT SPACE UTILIZATION SUMMARY ===")
         for i, (chunk, remaining) in enumerate(zip(right_chunks, space_remaining)):
@@ -533,6 +539,13 @@ class PDFUtils:
         if not right_chunks:
             right_chunks = [[]]
             space_remaining = [12]  # Full space available if no projects
+
+        # Debug: Print lengths before rendering
+        print(f"DEBUG: right_chunks: {len(right_chunks)}, project_numbers_per_page: {len(project_numbers_per_page)}, space_remaining: {len(space_remaining)}")
+        if len(right_chunks) != len(project_numbers_per_page):
+            print(f"WARNING: right_chunks and project_numbers_per_page length mismatch!")
+        if len(right_chunks) != len(space_remaining):
+            print(f"WARNING: right_chunks and space_remaining length mismatch!")
 
         # First page: render with first page of left column and first chunk of right column
         first_page_data = copy.deepcopy(data_copy)
@@ -578,6 +591,11 @@ class PDFUtils:
             right_col = []
             if page_idx < len(right_chunks):
                 right_col = right_chunks[page_idx]
+            # Safe fallback for project numbers
+            if page_idx < len(project_numbers_per_page):
+                right_project_numbers = project_numbers_per_page[page_idx]
+            else:
+                right_project_numbers = []
             
             html_pages.append(continuation_template.render(
                 left_column=left_col,
@@ -587,7 +605,7 @@ class PDFUtils:
                 font_size=font_size,
                 left_logo=f"data:image/png;base64,{left_logo_b64}",
                 right_logo=f"data:image/png;base64,{right_logo_b64}",
-                right_project_numbers=project_numbers_per_page[page_idx]
+                right_project_numbers=right_project_numbers
             ))
             project_index_offset += len(right_col)
 

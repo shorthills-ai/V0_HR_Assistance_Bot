@@ -202,95 +202,37 @@ class ResumeRetailor:
     
     def expand_project_description(self, project: Dict, job_keywords: Set[str]) -> str:
         """Expand a project description based on its title and minimal description."""
-        def extract_main_description(text, project_title=None):
-            # Remove everything before a separator or project title
-            separators = ["---", "Project Title:", "**Project Title:", "#", "Below is an improved version", "Improved version", "Enhanced version"]
-            for sep in separators:
-                if sep in text:
-                    text = text.split(sep, 1)[-1].strip()
-            # Remove everything after a breakdown, bullet, or numbered list
-            splitters = [
-                "Here's a breakdown", "Here's a breakdown", "Project Overview", "1.", "2.", "3.", "Project overview", "Breakdown:"
-            ]
-            for splitter in splitters:
-                if splitter in text:
-                    text = text.split(splitter)[0].strip()
-            # Remove markdown/bullet points if any
-            text = re.sub(r"^\s*\d+\.\s.*", "", text, flags=re.MULTILINE)
-            # Remove extra newlines
-            text = re.sub(r"\n{2,}", "\n", text)
-            # Remove leading/trailing whitespace and markdown
-            text = text.strip().lstrip("*").lstrip("#").strip()
-            # Remove the project title if present at the start (with or without markdown/bold)
-            if project_title:
-                lines = text.splitlines()
-                cleaned_lines = []
-                pt = project_title.strip().lower()
-                for line in lines:
-                    l = line.strip().lower().replace("**", "").replace("#", "")
-                    if l.startswith("project title:") or l == pt or l == f"**{pt}**" or l == f"{pt}.":
-                        continue
-                    cleaned_lines.append(line)
-                text = "\n".join(cleaned_lines).strip()
-            return text
+        # Only use the main system and user prompt for every project, no fallback or legacy prompt logic
+        system_prompt = """
+You are a professional technical resume writer. Your task is to convert raw project data into a concise, impactful, and metric-driven project description suitable for a resume.
 
-        def is_meta_response(text):
-            meta_phrases = [
-                "the current project description", "here's an analysis", "here is an analysis",
-                "here's a breakdown", "here is a breakdown", "review", "analysis", "criteria provided",
-                "based on the criteria", "here's an improved version", "here is an improved version"
-            ]
-            text_lower = text.lower()
-            return any(phrase in text_lower for phrase in meta_phrases) or len(text.split()) < 100
+Follow these rules:
 
-        system_prompt = """You are an expert at writing detailed, professional project descriptions for resumes.
-Your task is to expand a minimal project description into a comprehensive, well-structured description that:
-1. Focuses STRICTLY on aspects related to the provided job keywords
-2. Maintains the original intent and scope while emphasizing keyword-relevant details
-3. Includes ONLY technologies and tools that match or are directly related to the job keywords
-4. Describes impact and outcomes in the context of the job requirements
-5. Uses professional, formal language
-6. Is based ONLY on the information provided - do not invent or hallucinate
-7. MUST be at least 150 words long (approximately 8-10 sentences)
-8. Each sentence should connect to at least one job keyword
+1. Output 4 to 7 bullet points, each 1–2 lines long maximum. Dont write extra, be to the point and concise.
+2. The first line compulsorily has to be a professionally retailored title of the project, do this for every project and make sure it has only first letter of each word capitalised.
+    -> If its a work experience,make sure not to include company name in the title and give a generic title to the specific project.
+3. Each bullet must start with a strong past-tense action verb (Engineered, Built, Automated, Designed, Achieved, etc.).
+4. The bullet points should 
+ -> summarize what you built, what technologies you used, and why it mattered — no fluff, no LLM mentions unless critical.
+ -> describe any UX, responsiveness, optimization, version control, or frontend/backend implementation details.
+ -> include specific results using clear metrics — e.g., "93% coverage," "reduced latency by 40%," "automated 80% of manual work."
+ -> explain the business or user impact — how it helped the client, user, or team.
+5. Keep each bullet short and crisp — aim for clarity, not verbosity.
+6. Use plain text only — no markdown, no bullet symbols.
+7. IMPORTANT: Make sure to highlight and emphasize any skills, technologies, or experiences that match the provided job keywords.
+8. If the project uses any of the job keywords, make sure to explicitly mention them in the description.
 
-Important:
-- Do NOT invent technologies, tools, or outcomes
-- Do NOT add specific metrics unless provided
-- Keep the description factual and plausible
-- Use only the information from the project title and minimal description
-- Focus EXCLUSIVELY on aspects that align with the job keywords
-- Structure the description with:
-  * First 2-3 sentences: Project overview, purpose, and scope
-  * Middle 4-5 sentences: Detailed technical implementation, methodologies, and challenges
-  * Final 2-3 sentences: Impact, outcomes, and business value
-- If the project doesn't match any job keywords, return the original description unchanged
-- Do NOT add new projects or features that weren't in the original description"""
+You must NOT generate a paragraph — return 4 to 7 standalone resume-ready bullets.
+"""
 
-        user_prompt = f"""Expand this project description into a detailed, professional description that focuses STRICTLY on the job keywords.
+        user_prompt = f"""
+Project Title: {project['title']}
+Raw Description: {project['description']}
+Technologies: {', '.join(project.get('technologies', []))}
+Job Keywords to Highlight: {', '.join(job_keywords)}
 
-Project Title: {project.get('title', '')}
-Original Description: {project.get('description', '')}
-Job Keywords: {', '.join(job_keywords)}
-
-Write a detailed description (at least 150 words, approximately 8-10 sentences) that:
-1. Focuses EXCLUSIVELY on aspects related to the job keywords
-2. Maintains the original scope while emphasizing keyword-relevant details
-3. Includes ONLY technologies and tools that match the job keywords
-4. Uses professional language
-5. Is based only on the provided information
-6. Follows this structure:
-   - First 2-3 sentences: Project overview, purpose, and scope
-   - Middle 4-5 sentences: Detailed technical implementation, methodologies, and challenges
-   - Final 2-3 sentences: Impact, outcomes, and business value
-
-Important: 
-- The final description MUST be at least 150 words long
-- Each sentence should connect to at least one job keyword
-- Do not include details unrelated to the job keywords
-- Focus on technical depth and implementation details
-- If the project doesn't match any job keywords, return the original description unchanged
-- Do NOT add new projects or features that weren't in the original description"""
+Using the system instructions, create 4 to 7 clear, action-driven bullet points that summarize the project. Make sure to emphasize any matches with the job keywords in the description.
+"""
 
         try:
             response = self.client.chat.completions.create(
@@ -305,73 +247,7 @@ Important:
             
             expanded_description = response.choices[0].message.content.strip()
             
-            # Verify word count and keyword relevance
-            word_count = len(expanded_description.split())
-            if word_count < 150:
-                # If too short, ask for more details focusing on keywords
-                follow_up_prompt = f"""The expanded description is too short ({word_count} words) and needs to focus more on the job keywords. Please expand it to at least 150 words by adding more technical details and implementation specifics that are directly related to these job keywords: {', '.join(job_keywords)}
-
-Current Description:
-{expanded_description}
-
-Please provide a more detailed version that:
-1. Is at least 150 words long
-2. Focuses STRICTLY on the job keywords
-3. Includes more technical details related to the keywords
-4. Maintains accuracy and relevance
-5. Follows the structure:
-   - First 2-3 sentences: Project overview, purpose, and scope
-   - Middle 4-5 sentences: Detailed technical implementation, methodologies, and challenges
-   - Final 2-3 sentences: Impact, outcomes, and business value
-6. Does NOT add any new features or technologies not mentioned in the original description"""
-                
-                follow_up_response = self.client.chat.completions.create(
-                    model=st.secrets["azure_openai"]["deployment"],
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": follow_up_prompt}
-                    ],
-                    temperature=0.3,
-                    response_format={"type": "text"}
-                )
-                expanded_description = follow_up_response.choices[0].message.content.strip()
-            
-            # Verify keyword relevance and structure
-            keyword_check_prompt = f"""Verify that this project description focuses on the job keywords, is at least 150 words long, and follows the required structure.
-
-Job Keywords: {', '.join(job_keywords)}
-Current Description: {expanded_description}
-
-If the description:
-1. Is not at least 150 words long, or
-2. Does not focus enough on the job keywords, or
-3. Does not follow the required structure:
-   - First 2-3 sentences: Project overview, purpose, and scope
-   - Middle 4-5 sentences: Detailed technical implementation, methodologies, and challenges
-   - Final 2-3 sentences: Impact, outcomes, and business value
-4. Contains any new features or technologies not in the original description
-
-Please provide an improved version that addresses these issues."""
-            
-            final_check_response = self.client.chat.completions.create(
-                model=st.secrets["azure_openai"]["deployment"],
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": keyword_check_prompt}
-                ],
-                temperature=0.3,
-                response_format={"type": "text"}
-            )
-            
-            final_description = final_check_response.choices[0].message.content.strip()
-            
-            desc = extract_main_description(final_description, project.get('title', ''))
-            if is_meta_response(desc):
-                # Fallback to expanded_description or original
-                desc = extract_main_description(expanded_description, project.get('title', ''))
-                if is_meta_response(desc):
-                    desc = project.get('description', '')
-            return desc
+            return expanded_description
             
         except Exception as e:
             st.error(f"Error expanding project description: {str(e)}")
@@ -471,6 +347,28 @@ Please provide a more appropriate title. Otherwise, return the same title."""
             st.error(f"Error generating job title: {str(e)}")
             return candidate.get('title', '')  # Return original title if there's an error
 
+    def extract_relevant_projects(self, resume: Dict, job_keywords: Set[str]) -> list:
+        """Extract relevant projects from both 'projects' and 'experience' sections based on job keywords."""
+        keywords_lower = {k.lower() for k in job_keywords}
+        relevant_projects = []
+        # Check original projects
+        for proj in resume.get('projects', []):
+            desc = proj.get('description', '').lower()
+            techs = [t.lower() for t in proj.get('technologies', [])] if 'technologies' in proj else []
+            if any(k in desc for k in keywords_lower) or any(k in techs for k in keywords_lower):
+                relevant_projects.append(proj)
+        # Check experience descriptions
+        for exp in resume.get('experience', []):
+            exp_desc = exp.get('description', '').lower()
+            if any(k in exp_desc for k in keywords_lower):
+                # Create a project-like dict from experience
+                relevant_projects.append({
+                    'title': exp.get('title', 'Relevant Experience Project'),
+                    'description': exp.get('description', ''),
+                    'technologies': exp.get('technologies', []) if 'technologies' in exp else []
+                })
+        return relevant_projects
+
     def retailor_resume(self, original_resume: Dict, job_keywords: Set[str], job_description: str = "") -> Dict:
         """Retailor the resume to keep all original skills unchanged and only modify projects based on job relevance."""
         safe_resume = convert_objectid_to_str(original_resume)
@@ -478,6 +376,9 @@ Please provide a more appropriate title. Otherwise, return the same title."""
         # Generate job-specific title
         if job_description:
             safe_resume["title"] = self.generate_job_specific_title(safe_resume, job_keywords, job_description)
+        
+        # Use helper to get all relevant projects (from both projects and experience)
+        relevant_projects = self.extract_relevant_projects(safe_resume, job_keywords)
         
         # --- Retailor the resume (keeping all skills, only modifying projects) ---
         system_prompt = """
@@ -521,19 +422,34 @@ Instructions:
             # Parse the response
             retailored_resume = json.loads(response.choices[0].message.content.strip())
             
-            # IMPORTANT: Ensure all original skills are preserved
-            retailored_resume["skills"] = safe_resume.get("skills", [])
+            # IMPORTANT: Ensure all original skills are preserved and add any missing job keywords
+            original_skills = set(safe_resume.get("skills", []))
+            # Convert job keywords to lowercase for case-insensitive comparison
+            job_keywords_lower = {k.lower() for k in job_keywords}
+            original_skills_lower = {s.lower() for s in original_skills}
             
-            # --- Custom logic: If no or only one relevant project, use all original projects and expand them ---
+            # Add any job keywords that aren't already in the skills list
+            new_skills = []
+            for keyword in job_keywords:
+                if keyword.lower() not in original_skills_lower:
+                    new_skills.append(keyword)
+            
+            # Combine original skills with new skills
+            retailored_resume["skills"] = list(original_skills) + new_skills
+            
+            # --- Custom logic: Only enhance all projects if there is <= 1 relevant project, else keep only relevant projects ---
             if "projects" in retailored_resume:
                 filtered_projects = retailored_resume["projects"]
-                if len(filtered_projects) <= 1:
-                    # Use all original projects if too few relevant ones
-                    filtered_projects = safe_resume.get("projects", [])
-                # Expand all project descriptions with a delay
+                original_projects = safe_resume.get("projects", [])
+                if len(relevant_projects) == 0:
+                    # If no relevant projects found, include all original projects
+                    filtered_projects = original_projects
+                else:
+                    # If 1 or more relevant projects found, keep only those relevant projects
+                    filtered_projects = relevant_projects
                 for project in filtered_projects:
                     project["description"] = self.expand_project_description(project, job_keywords)
-                    time.sleep(1)  # Add a 1 second delay between expansions
+                    time.sleep(1)
                 retailored_resume["projects"] = filtered_projects
             
             # Validate the structure
