@@ -1037,6 +1037,8 @@ elif page == "JD-Resume Regeneration":
 # -------------------
 # Page: Upload & Process Resumes
 # -------------------
+# ...existing code...
+
 elif page == "Upload & Process":
     st.title("📄 Resume Processing Pipeline")
     st.markdown("""
@@ -1049,6 +1051,9 @@ elif page == "Upload & Process":
     Supported formats: PDF, DOCX
 """)
 
+    # --- Add Employee ID input box ---
+    employee_id = st.text_input("Enter Employee ID (will be added to all uploaded resumes)", key="employee_id_input")
+
     uploaded_files = st.file_uploader(
         "📤 Upload Resume Files", 
         type=["pdf", "docx"], 
@@ -1057,80 +1062,42 @@ elif page == "Upload & Process":
         help="Upload PDF or DOCX resume files"
     )
 
-    # Track uploaded files in session state for persistence
-    if "uploaded_file_names" not in st.session_state:
-        st.session_state.uploaded_file_names = []
-    if "employee_ids" not in st.session_state:
-        st.session_state.employee_ids = {}
+    # ...existing code...
 
-    # Update the list of uploaded file names and reset employee_ids
+    # Combined processing button
     if uploaded_files:
-        current_file_names = [file.name for file in uploaded_files]
-        if sorted(current_file_names) != sorted(st.session_state.uploaded_file_names):
-            st.session_state.uploaded_file_names = current_file_names
-            st.session_state.processing_complete = False
-            st.session_state.standardizing_complete = False
-            st.session_state.db_upload_complete = False
-            st.session_state.processed_files = []
-            st.session_state.standardized_files = []
-            st.session_state.uploaded_files = []
-            st.session_state.employee_ids = {}
-
-        st.markdown("#### Enter Employee ID for Each Resume")
-        all_ids_entered = True
-        for file in uploaded_files:
-            emp_id = st.text_input(
-                f"Employee ID for {file.name}",
-                value=st.session_state.employee_ids.get(file.name, ""),
-                key=f"emp_id_{file.name}"
-            )
-            st.session_state.employee_ids[file.name] = emp_id.strip()
-            if not emp_id.strip():
-                all_ids_entered = False
-
-        if not all_ids_entered:
-            st.warning("Please enter Employee ID for all uploaded resumes to proceed.")
-        
-    # Combined processing button (only enabled if all IDs are entered)
-    if uploaded_files and all([st.session_state.employee_ids.get(f.name, "").strip() for f in uploaded_files]):
         if st.button("🚀 Process Resumes", type="primary", use_container_width=True):
             with st.spinner("Processing resumes..."):
                 # Step 1: Parse
                 process_uploaded_files(uploaded_files)
-                # Attach Employee ID to each parsed file
-                for file in uploaded_files:
-                    emp_id = st.session_state.employee_ids[file.name]
-                    parsed_path = parsed_dir / f"{Path(file.name).stem}.json"
-                    if parsed_path.exists():
-                        with open(parsed_path, "r", encoding="utf-8") as f:
-                            data = json.load(f)
-                        data["ID"] = emp_id
-                        with open(parsed_path, "w", encoding="utf-8") as f:
-                            json.dump(data, f, indent=2, ensure_ascii=False)
                 st.success("✅ Parsing complete!")
                 
                 # Step 2: Standardize
                 asyncio.run(standardize_resumes())
-                # Attach Employee ID to each standardized file
-                for file in uploaded_files:
-                    emp_id = st.session_state.employee_ids[file.name]
-                    std_path = standardized_dir / f"{Path(file.name).stem}.json"
-                    if std_path.exists():
-                        with open(std_path, "r", encoding="utf-8") as f:
-                            data = json.load(f)
-                        data["ID"] = emp_id
-                        with open(std_path, "w", encoding="utf-8") as f:
-                            json.dump(data, f, indent=2, ensure_ascii=False)
                 st.success("✅ Standardization complete!")
 
                 # Step 3: Validate and reprocess if necessary
                 validate_and_reprocess_resumes(uploaded_files)
                 
-                # Step 4: Upload to MongoDB
+                # Step 4: Upload to MongoDB (inject Employee ID before upload)
+                # --- Inject Employee ID into each standardized file ---
+                if employee_id.strip():
+                    for file_path in st.session_state.standardized_files:
+                        try:
+                            with open(file_path, "r+", encoding="utf-8") as f:
+                                data = json.load(f)
+                                data["ID"] = employee_id.strip()
+                                f.seek(0)
+                                json.dump(data, f, indent=2, ensure_ascii=False)
+                                f.truncate()
+                        except Exception as e:
+                            st.error(f"Error adding Employee ID to {file_path.name}: {e}")
                 upload_to_mongodb()
                 st.success("✅ Database upload complete!")
-    elif uploaded_files:
-        st.info("👆 Please enter Employee ID for all resumes to enable processing.")
+    else:
+        st.info("👆 Please upload resume files to begin processing")
+
+    # ...existing code...
 
     # Display processing status
     st.subheader("📊 Processing Status")
