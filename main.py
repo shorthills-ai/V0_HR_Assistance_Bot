@@ -1086,7 +1086,7 @@ elif page == "Upload & Process":
                         try:
                             with open(file_path, "r+", encoding="utf-8") as f:
                                 data = json.load(f)
-                                data["ID"] = employee_id.strip()
+                                data["employee_id"] = employee_id.strip()
                                 f.seek(0)
                                 json.dump(data, f, indent=2, ensure_ascii=False)
                                 f.truncate()
