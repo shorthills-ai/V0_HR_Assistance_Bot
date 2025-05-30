@@ -1060,8 +1060,10 @@ elif page == "Upload & Process":
     # Track uploaded files in session state for persistence
     if "uploaded_file_names" not in st.session_state:
         st.session_state.uploaded_file_names = []
+    if "employee_ids" not in st.session_state:
+        st.session_state.employee_ids = {}
 
-    # Update the list of uploaded file names
+    # Update the list of uploaded file names and reset employee_ids
     if uploaded_files:
         current_file_names = [file.name for file in uploaded_files]
         if sorted(current_file_names) != sorted(st.session_state.uploaded_file_names):
@@ -1072,17 +1074,53 @@ elif page == "Upload & Process":
             st.session_state.processed_files = []
             st.session_state.standardized_files = []
             st.session_state.uploaded_files = []
+            st.session_state.employee_ids = {}
 
-    # Combined processing button
-    if uploaded_files:
+        st.markdown("#### Enter Employee ID for Each Resume")
+        all_ids_entered = True
+        for file in uploaded_files:
+            emp_id = st.text_input(
+                f"Employee ID for {file.name}",
+                value=st.session_state.employee_ids.get(file.name, ""),
+                key=f"emp_id_{file.name}"
+            )
+            st.session_state.employee_ids[file.name] = emp_id.strip()
+            if not emp_id.strip():
+                all_ids_entered = False
+
+        if not all_ids_entered:
+            st.warning("Please enter Employee ID for all uploaded resumes to proceed.")
+        
+    # Combined processing button (only enabled if all IDs are entered)
+    if uploaded_files and all([st.session_state.employee_ids.get(f.name, "").strip() for f in uploaded_files]):
         if st.button("🚀 Process Resumes", type="primary", use_container_width=True):
             with st.spinner("Processing resumes..."):
                 # Step 1: Parse
                 process_uploaded_files(uploaded_files)
+                # Attach Employee ID to each parsed file
+                for file in uploaded_files:
+                    emp_id = st.session_state.employee_ids[file.name]
+                    parsed_path = parsed_dir / f"{Path(file.name).stem}.json"
+                    if parsed_path.exists():
+                        with open(parsed_path, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                        data["ID"] = emp_id
+                        with open(parsed_path, "w", encoding="utf-8") as f:
+                            json.dump(data, f, indent=2, ensure_ascii=False)
                 st.success("✅ Parsing complete!")
                 
                 # Step 2: Standardize
                 asyncio.run(standardize_resumes())
+                # Attach Employee ID to each standardized file
+                for file in uploaded_files:
+                    emp_id = st.session_state.employee_ids[file.name]
+                    std_path = standardized_dir / f"{Path(file.name).stem}.json"
+                    if std_path.exists():
+                        with open(std_path, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                        data["ID"] = emp_id
+                        with open(std_path, "w", encoding="utf-8") as f:
+                            json.dump(data, f, indent=2, ensure_ascii=False)
                 st.success("✅ Standardization complete!")
 
                 # Step 3: Validate and reprocess if necessary
@@ -1091,8 +1129,8 @@ elif page == "Upload & Process":
                 # Step 4: Upload to MongoDB
                 upload_to_mongodb()
                 st.success("✅ Database upload complete!")
-    else:
-        st.info("👆 Please upload resume files to begin processing")
+    elif uploaded_files:
+        st.info("👆 Please enter Employee ID for all resumes to enable processing.")
 
     # Display processing status
     st.subheader("📊 Processing Status")
@@ -1118,8 +1156,6 @@ elif page == "Upload & Process":
             st.info("⏳ Waiting for standardization...")
 
     # Display file previews if processed
-    # ...existing code...
-    # Display file previews if processed
     if st.session_state.standardized_files:
         st.subheader("👀 Preview Processed Resumes")
         selected_file = st.selectbox(
@@ -1132,19 +1168,6 @@ elif page == "Upload & Process":
                 resume_data = json.load(f)
             st.markdown("---")
             render_formatted_resume(resume_data)
-
-            # --- Employee ID Assignment Form ---
-            st.markdown("#### 🆔 Assign or Update Employee ID")
-            current_id = resume_data.get("ID", "")
-            with st.form(key=f"employee_id_form_{selected_file}"):
-                new_id = st.text_input("Employee ID", value=current_id, max_chars=50)
-                submit_id = st.form_submit_button("Save Employee ID")
-            if submit_id:
-                resume_data["ID"] = new_id.strip()
-                with open(file_path, "w", encoding="utf-8") as f:
-                    json.dump(resume_data, f, indent=2, ensure_ascii=False)
-                st.success(f"Employee ID '{new_id}' saved for {selected_file}!")
-# ...existing code...
 
 # -------------------
 # Page: Database Management
