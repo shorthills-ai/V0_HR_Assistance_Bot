@@ -1248,7 +1248,22 @@ elif page == "Database Management":
                         query = {search_field: {"$regex": search_value, "$options": "i"}}
                     if search_field == "College":
                         search_field = "education.institution"
-                        query = {search_field: {"$regex": f"(^|\\s){search_value}(\\s|$)", "$options": "i"}}
+                        # Special handling ONLY if user enters exactly "IIT"
+                        if search_value.strip().lower() == "iit":
+                            iit_variants = [
+                                "IIT",
+                                "Indian Institute of Technology",
+                                "Indian Inst of Technology",
+                                "Indian Inst. of Technology",
+                                "Indian Institute Technology",
+                                "Indian Inst Technology"
+                            ]
+                            # Build a regex that matches any of the variants as whole words
+                            regex_pattern = "(" + "|".join([f"(^|\\s){variant}(\\s|$)" for variant in iit_variants]) + ")"
+                            query = {search_field: {"$regex": regex_pattern, "$options": "i"}}
+                        else:
+                            # For all other cases (including full names), use the original logic
+                            query = {search_field: {"$regex": f"(^|\\s){search_value}(\\s|$)", "$options": "i"}}
                     elif "." in search_field:
                         query = {search_field: {"$regex": search_value, "$options": "i"}}
                     else:
