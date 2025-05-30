@@ -572,7 +572,7 @@ elif page == "JD-Resume Regeneration":
                                 for i, proj in enumerate(resume_data["projects"]):
                                     st.markdown(f"**Project {i+1}**")
                                     proj["title"] = st.text_input(f"Title {i+1}", value=proj.get("title", ""), key=f"title_{cand['mongo_id']}_{i}")
-                                    proj["description"] = st.text_area(f"Description {i+1}", value=proj.get("description", ""), key=f"desc_{cand['mongo_id']}_{i}")
+                                    proj["description"] = st.text_area(f"Description {i+1}", value=proj.get("description", ""), key=f"desc_{cand['mongo_id']}_{i}", height=300)
                                     proj_btn_col1, proj_btn_col2, proj_btn_col3 = st.columns([1, 1, 1])
                                     with proj_btn_col1:
                                         if st.form_submit_button(f"⬆️ Move Up {i+1}"):
@@ -877,7 +877,7 @@ elif page == "JD-Resume Regeneration":
                 for i, proj in enumerate(resume_data["projects"]):
                     st.markdown(f"**Project {i+1}**")
                     proj["title"] = st.text_input(f"Title {i+1}", value=proj.get("title", ""), key=f"title_single_{i}")
-                    proj["description"] = st.text_area(f"Description {i+1}", value=proj.get("description", ""), key=f"desc_single_{i}")
+                    proj["description"] = st.text_area(f"Description {i+1}", value=proj.get("description", ""), key=f"desc_single_{i}", height=300)
                     proj_btn_col1, proj_btn_col2, proj_btn_col3 = st.columns([1, 1, 1])
                     with proj_btn_col1:
                         if st.form_submit_button(f"⬆️ Move Up {i+1}"):

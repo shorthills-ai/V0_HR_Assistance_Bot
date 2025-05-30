@@ -18,14 +18,14 @@ class PDFUtils:
         return base64.b64encode(pdf_file.read()).decode("utf-8")
 
     @staticmethod
-    def analyze_space_usage(data, max_space_per_page=12):
+    def analyze_space_usage(data, max_space_per_page=32):
         """
         Analyze space usage for projects without generating the full PDF.
         Returns detailed information about how space will be distributed.
         
         Args:
             data: Resume data dictionary
-            max_space_per_page: Maximum space units per page for projects (default: 12)
+            max_space_per_page: Maximum space units per page for projects (default: 18)
             
         Returns:
             dict: Contains space analysis information including:
@@ -42,7 +42,7 @@ class PDFUtils:
             if project.get('description'):
                 bullets = project['description'].split('\n')
                 bullets = [b.strip() for b in bullets if b.strip()]
-                size += len(bullets)
+                size += int(len(bullets) * 0.8)
             return size
         
         projects = data.get('projects', [])
@@ -85,13 +85,15 @@ class PDFUtils:
         space_per_page = []
         remaining_space_per_page = []
         
+        usable_space_per_page = max_space_per_page - 2
+        
         for project in projects:
             project_size = estimate_project_size(project)
             
             # If this project can't fit on current page, start a new page
-            if current_page_size + project_size > max_space_per_page and current_page:
+            if current_page_size + project_size > usable_space_per_page and current_page:
                 space_per_page.append(current_page_size)
-                remaining_space_per_page.append(max_space_per_page - current_page_size)
+                remaining_space_per_page.append(usable_space_per_page - current_page_size)
                 pages.append(current_page)
                 current_page = []
                 current_page_size = 0
@@ -103,7 +105,7 @@ class PDFUtils:
         # Add the last page if it has content
         if current_page:
             space_per_page.append(current_page_size)
-            remaining_space_per_page.append(max_space_per_page - current_page_size)
+            remaining_space_per_page.append(usable_space_per_page - current_page_size)
             pages.append(current_page)
         
         estimated_pages = len(pages) if pages else 1
@@ -323,7 +325,7 @@ class PDFUtils:
 
         # Estimate how many items fit in the left and right columns per page
         LEFT_COL_MAX = 28  # Total items per page in left column
-        RIGHT_COL_MAX = 3  # projects per page
+        RIGHT_COL_MAX = 4  # projects per page
 
         font_size = 13  # Default font size for all pages
 
@@ -392,7 +394,7 @@ class PDFUtils:
                 size += len(bullets)
             return size
         
-        def analyze_project_space_usage(projects, max_space_per_page=28):
+        def analyze_project_space_usage(projects, max_space_per_page=32):
             """Analyze and report detailed space usage for projects"""
             print(f"\n=== DETAILED PROJECT SPACE ANALYSIS ===")
             print(f"Max space per page: {max_space_per_page}")
@@ -420,61 +422,102 @@ class PDFUtils:
             
             return total_estimated_space, estimated_pages
         
-        def distribute_projects_to_pages(projects, max_space_per_page=28):
-            """Distribute projects across pages based on content size"""
+        def distribute_projects_to_pages(projects, max_space_per_page):
+            """Distribute projects across pages, splitting long project descriptions if needed. Fill each page up to max_space_per_page, splitting project descriptions if needed, and only show the title on the first part. Track project numbering so only blocks with a title increment the project number."""
             if not projects:
-                return [[]], [max_space_per_page]  # Return empty page and full space remaining
-                
+                return [[]], [max_space_per_page - 2], [[]]
+
             pages = []
             current_page = []
             current_page_size = 0
-            space_remaining_per_page = []  # Track remaining space for each page
-            
-            print(f"DEBUG: Starting project distribution with max_space_per_page={max_space_per_page}")
-            
+            space_remaining_per_page = []
+            usable_space_per_page = max_space_per_page - 2
+            project_numbers_per_page = []
+            current_page_numbers = []
+            project_counter = 0
+
             for i, project in enumerate(projects):
-                project_size = estimate_project_size(project)
-                print(f"DEBUG: Project {i+1} '{project.get('title', 'Untitled')}' estimated size: {project_size}")
-                
-                # If this project can't fit on current page, start a new page
-                if current_page_size + project_size > max_space_per_page and current_page:
-                    remaining_space = max_space_per_page - current_page_size
-                    space_remaining_per_page.append(remaining_space)
-                    print(f"DEBUG: Page {len(pages)+1} completed with {len(current_page)} projects, used space: {current_page_size}, remaining space: {remaining_space}")
-                    
-                    pages.append(current_page)
-                    current_page = []
-                    current_page_size = 0
-                
-                # Add project to current page
-                current_page.append(project)
-                current_page_size += project_size
-                print(f"DEBUG: Added project to page {len(pages)+1}, current page size: {current_page_size}/{max_space_per_page}")
-            
+                # Estimate size for title + description lines
+                desc_lines = [l.strip() for l in project.get('description', '').split('\n') if l.strip()]
+                total_lines = 1 + len(desc_lines)  # 1 for title
+                idx = 0
+                while idx < len(desc_lines):
+                    remaining_space = usable_space_per_page - current_page_size
+                    # If this is the first chunk for this project, include title
+                    lines_for_this_page = remaining_space - 1 if current_page_size == 0 else remaining_space
+                    if lines_for_this_page <= 0:
+                        # No space left, start new page
+                        space_remaining_per_page.append(usable_space_per_page - current_page_size)
+                        pages.append(current_page)
+                        project_numbers_per_page.append(current_page_numbers)
+                        current_page = []
+                        current_page_numbers = []
+                        current_page_size = 0
+                        continue
+                    # If this is the first chunk, show title and increment project number
+                    if idx == 0:
+                        chunk_lines = desc_lines[idx:idx+lines_for_this_page]
+                        split_proj = dict(project)
+                        split_proj['description'] = '\n'.join(chunk_lines)
+                        current_page.append(split_proj)
+                        project_counter += 1
+                        current_page_numbers.append(project_counter)
+                        current_page_size += 1 + len(chunk_lines)
+                        idx += len(chunk_lines)
+                    else:
+                        # Continuation: no title, no number
+                        chunk_lines = desc_lines[idx:idx+remaining_space]
+                        split_proj = dict(project)
+                        split_proj['description'] = '\n'.join(chunk_lines)
+                        split_proj['title'] = ''
+                        if 'number' in split_proj:
+                            del split_proj['number']
+                        current_page.append(split_proj)
+                        current_page_numbers.append(None)
+                        current_page_size += len(chunk_lines)
+                        idx += len(chunk_lines)
+                    # If page is full, start new page
+                    if current_page_size >= usable_space_per_page:
+                        space_remaining_per_page.append(usable_space_per_page - current_page_size)
+                        pages.append(current_page)
+                        project_numbers_per_page.append(current_page_numbers)
+                        current_page = []
+                        current_page_numbers = []
+                        current_page_size = 0
+                # If project fits entirely and page is not full, just add it
+                if len(desc_lines) == 0:
+                    # Project with no description
+                    if current_page_size + 1 > usable_space_per_page:
+                        space_remaining_per_page.append(usable_space_per_page - current_page_size)
+                        pages.append(current_page)
+                        project_numbers_per_page.append(current_page_numbers)
+                        current_page = []
+                        current_page_numbers = []
+                        current_page_size = 0
+                    split_proj = dict(project)
+                    split_proj['description'] = ''
+                    current_page.append(split_proj)
+                    project_counter += 1
+                    current_page_numbers.append(project_counter)
+                    current_page_size += 1
             # Add the last page if it has content
             if current_page:
-                remaining_space = max_space_per_page - current_page_size
-                space_remaining_per_page.append(remaining_space)
-                print(f"DEBUG: Final page {len(pages)+1} completed with {len(current_page)} projects, used space: {current_page_size}, remaining space: {remaining_space}")
+                space_remaining_per_page.append(usable_space_per_page - current_page_size)
                 pages.append(current_page)
-            
-            # If no pages were created, create an empty page
+                project_numbers_per_page.append(current_page_numbers)
             if not pages:
                 pages = [[]]
-                space_remaining_per_page = [max_space_per_page]
-            
-            print(f"DEBUG: Project distribution complete. Total pages: {len(pages)}")
-            print(f"DEBUG: Space remaining per page: {space_remaining_per_page}")
-            
-            return pages, space_remaining_per_page
+                space_remaining_per_page = [usable_space_per_page]
+                project_numbers_per_page = [[]]
+            return pages, space_remaining_per_page, project_numbers_per_page
         
         projects = data_copy.get('projects', [])
         
         # First analyze the space usage
-        total_estimated_space, estimated_pages = analyze_project_space_usage(projects, max_space_per_page=12)
+        total_estimated_space, estimated_pages = analyze_project_space_usage(projects, max_space_per_page=20)
         
         # Then distribute projects to pages
-        right_chunks, space_remaining = distribute_projects_to_pages(projects, max_space_per_page=12)
+        right_chunks, space_remaining, project_numbers_per_page = distribute_projects_to_pages(projects, max_space_per_page=20)
 
         # Print space utilization summary
         print(f"\n=== PROJECT SPACE UTILIZATION SUMMARY ===")
@@ -543,7 +586,8 @@ class PDFUtils:
                 project_index_offset=project_index_offset,
                 font_size=font_size,
                 left_logo=f"data:image/png;base64,{left_logo_b64}",
-                right_logo=f"data:image/png;base64,{right_logo_b64}"
+                right_logo=f"data:image/png;base64,{right_logo_b64}",
+                right_project_numbers=project_numbers_per_page[page_idx]
             ))
             project_index_offset += len(right_col)
 
