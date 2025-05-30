@@ -4,6 +4,45 @@ import streamlit as st
 from pymongo import MongoClient
 from boolean.boolean import BooleanAlgebra, Symbol, AND, OR
 import config
+import openai
+
+AZURE_OPENAI_API_KEY = st.secrets["azure_openai"]["api_key"]
+AZURE_OPENAI_ENDPOINT = st.secrets["azure_openai"]["endpoint"]
+AZURE_OPENAI_DEPLOYMENT = st.secrets["azure_openai"]["deployment"]
+AZURE_OPENAI_API_VERSION = st.secrets["azure_openai"]["api_version"]
+
+# Create a reusable OpenAI client instance (Azure)
+openai_client = openai.AzureOpenAI(
+    api_key=AZURE_OPENAI_API_KEY,
+    api_version=AZURE_OPENAI_API_VERSION,
+    azure_endpoint=AZURE_OPENAI_ENDPOINT
+)
+def convert_natural_language_to_boolean(nl_query):
+    prompt = f"""Convert the following natural language query into a Boolean search query.
+        Example 1:
+        Input: Show me candidates skilled in Java and Spring Boot
+        Output: java and springboot
+
+        Example 2:
+        Input: Find someone who knows Python or data science
+        Output: python or datascience
+
+        Example 3:
+        Input: I want profiles with either machine learning or deep learning but not statistics
+        Output: (machinelearning or deeplearning) and not statistics
+
+        Now, convert this:
+        Input: {nl_query}
+        Output:"""
+
+    response = openai_client.chat.completions.create(
+        model=AZURE_OPENAI_DEPLOYMENT,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0
+    )
+    return response.choices[0].message.content.strip()
+
+
 
 
 class BooleanSearchParser:
@@ -11,7 +50,8 @@ class BooleanSearchParser:
         self.algebra = BooleanAlgebra()
         self.quoted_phrases = {}
         self.placeholder_counter = 0
-
+    def convert_nl_query(self, query):
+        return convert_natural_language_to_boolean(query)
     def normalize_operator(self, token: str) -> str:
         """Normalize boolean operators to uppercase regardless of input case."""
         token_upper = token.upper()
@@ -257,6 +297,12 @@ def display_json(data):
         del data["_id"]
     
     st.json(data)
+def normalize_boolean_operators(query):
+    # Replace lowercase boolean operators with uppercase versions (whole words only)
+    query = re.sub(r'\band\b', 'AND', query, flags=re.IGNORECASE)
+    query = re.sub(r'\bor\b', 'OR', query, flags=re.IGNORECASE)
+    query = re.sub(r'\bnot\b', 'NOT', query, flags=re.IGNORECASE)
+    return query
 
 def render_formatted_resume(resume: dict):
     st.subheader(f"{resume.get('name', 'Candidate')} - Profile")
@@ -403,6 +449,7 @@ def main():
                 <h1 style="margin: 0;">HR Bot Resume Search</h1>
             </div>
         """, unsafe_allow_html=True)
+        
         with st.expander("Search Tips"):
             st.markdown("""
             - **Simple keyword**: `Python`
@@ -420,6 +467,9 @@ def main():
     st.title("🔎 Looking for some candidates?")
     st.markdown("### Search for Candidates")
     search_query = st.text_input("Enter your search query:", placeholder="e.g., Python AND Machine Learning")
+    if search_query:
+            search_query = convert_natural_language_to_boolean(search_query)
+            search_query = normalize_boolean_operators(search_query)
     if not search_query:
         st.info("👆 Enter a search query above to begin searching.")
         # Sample placeholders when no search is performed
