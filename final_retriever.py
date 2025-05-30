@@ -171,6 +171,22 @@ def flatten_json(obj) -> str:
 
 # Evaluator
 
+def calculate_rank(doc, matched_terms, norm_text):
+    """Calculate a relevance score based on number of highlights."""
+    # Count total number of matches for all terms
+    total_matches = 0
+    for term in matched_terms:
+        # Count all matches (both exact and substring)
+        pattern = r'\b' + re.escape(term) + r'\b'
+        matches = len(re.findall(pattern, norm_text, re.IGNORECASE))
+        total_matches += matches
+        
+        # Also count substring matches to catch all instances
+        substring_matches = norm_text.count(term.lower())
+        total_matches += substring_matches
+    
+    return total_matches
+
 def evaluate_expression(expr, text, quoted_phrases=None):
     """Recursively evaluate Boolean expression against text, with substring fallback."""
     quoted_phrases = quoted_phrases or {}
@@ -519,6 +535,7 @@ def main():
     
     # Store unique documents using a dictionary with _id as key
     unique_matching_docs = {}
+    doc_ranks = {}  # Store ranks for each document
     
     for idx, doc in enumerate(docs):
         try:
@@ -542,6 +559,10 @@ def main():
                 search_terms = extract_search_terms(parsed_query, bsp.quoted_phrases)
                 st.session_state[f"matched_terms_{doc_id}"] = search_terms
                 
+                # Calculate rank for this document
+                rank = calculate_rank(doc, search_terms, norm_text)
+                doc_ranks[doc_id] = rank
+                
                 # Pre-highlight the entire document
                 highlighted_doc = highlight_dict_values(doc, search_terms)
                 st.session_state[f"highlighted_doc_{doc_id}"] = highlighted_doc
@@ -551,8 +572,10 @@ def main():
 
     progress_bar.empty()
 
-    # Get list of unique matching documents
+    # Get list of unique matching documents and sort by rank
     matching_docs_list = list(unique_matching_docs.values())
+    # Sort by rank in descending order, then by name for ties
+    matching_docs_list.sort(key=lambda x: (-doc_ranks[str(x.get('_id'))], x.get('name', '').lower()))
 
     # Display results
     if matching_docs_list:
@@ -566,6 +589,7 @@ def main():
             for doc in matching_docs_list:
                 doc_id = str(doc.get('_id'))
                 matched_terms = st.session_state.get(f"matched_terms_{doc_id}", set())
+                rank = doc_ranks[doc_id]
                 
                 with st.container():
                     # Highlight the name and contact info
@@ -579,6 +603,9 @@ def main():
                         <div class="contact-info">
                             📧 {email} | 
                             📱 {phone}
+                        </div>
+                        <div class="rank-info">
+                            Number of Matches: {rank}
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
