@@ -1118,6 +1118,8 @@ elif page == "Upload & Process":
             st.info("⏳ Waiting for standardization...")
 
     # Display file previews if processed
+    # ...existing code...
+    # Display file previews if processed
     if st.session_state.standardized_files:
         st.subheader("👀 Preview Processed Resumes")
         selected_file = st.selectbox(
@@ -1130,6 +1132,19 @@ elif page == "Upload & Process":
                 resume_data = json.load(f)
             st.markdown("---")
             render_formatted_resume(resume_data)
+
+            # --- Employee ID Assignment Form ---
+            st.markdown("#### 🆔 Assign or Update Employee ID")
+            current_id = resume_data.get("ID", "")
+            with st.form(key=f"employee_id_form_{selected_file}"):
+                new_id = st.text_input("Employee ID", value=current_id, max_chars=50)
+                submit_id = st.form_submit_button("Save Employee ID")
+            if submit_id:
+                resume_data["ID"] = new_id.strip()
+                with open(file_path, "w", encoding="utf-8") as f:
+                    json.dump(resume_data, f, indent=2, ensure_ascii=False)
+                st.success(f"Employee ID '{new_id}' saved for {selected_file}!")
+# ...existing code...
 
 # -------------------
 # Page: Database Management
