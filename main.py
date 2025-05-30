@@ -1248,19 +1248,53 @@ elif page == "Database Management":
                         query = {search_field: {"$regex": search_value, "$options": "i"}}
                     if search_field == "College":
                         search_field = "education.institution"
-                        if search_value.strip().lower() == "iit":
-                            iit_variants = [
+                        # Define all special institutes and their variants
+                        special_institutes = {
+                            "iit": [
                                 "IIT",
                                 "Indian Institute of Technology",
                                 "Indian Inst of Technology",
                                 "Indian Inst. of Technology",
                                 "Indian Institute Technology",
                                 "Indian Inst Technology"
+                            ],
+                            "iim": [
+                                "IIM",
+                                "Indian Institute of Management",
+                                "Indian Inst of Management",
+                                "Indian Inst. of Management",
+                                "Indian Institute Management",
+                                "Indian Inst Management"
+                            ],
+                            "iiit": [
+                                "IIIT",
+                                "Indian Institute of Information Technology",
+                                "Indian Inst of Information Technology",
+                                "Indian Inst. of Information Technology",
+                                "Indian Institute Information Technology",
+                                "Indian Inst Information Technology"
+                            ],
+                            "nit": [
+                                "NIT",
+                                "National Institute of Technology",
+                                "National Inst of Technology",
+                                "National Inst. of Technology",
+                                "National Institute Technology",
+                                "National Inst Technology"
                             ]
+                        }
+                        search_val_norm = search_value.strip().lower()
+                        matched = None
+                        for key, variants in special_institutes.items():
+                            if any(search_val_norm == v.lower() for v in variants):
+                                matched = key
+                                break
+
+                        if matched:
                             regex_parts = []
-                            for variant in iit_variants:
-                                if variant == "IIT":
-                                    regex_parts.append(r"(^|\s)IIT(\s|$)")
+                            for variant in special_institutes[matched]:
+                                if variant.upper() == matched.upper():
+                                    regex_parts.append(rf"(^|\s){variant}(\s|$)")
                                 else:
                                     regex_parts.append(variant)
                             regex_pattern = "(" + "|".join(regex_parts) + ")"
