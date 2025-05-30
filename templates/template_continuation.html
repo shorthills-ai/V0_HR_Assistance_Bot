@@ -6,7 +6,7 @@
     @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap');
     body { font-family: 'Montserrat'; background: #fff; font-size: '{{ font_size or 12 }}px'; color: #222; }
     .page { width: 21cm; height: 29.7cm; margin: auto; display: flex; flex-direction: column; background: #fff; border: 3px solid #f25d5d; }
-    .content { flex: 1; display: flex; padding: 0 18px 18px 0; overflow: hidden; }
+    .content { flex: 1; display: flex; padding: 0 16px 12px 0; overflow: hidden; }
     .left-column {
       width: 38%;
       min-width: 200px;
@@ -182,8 +182,9 @@
     <div class="right-column">
       {% for project in right_column %}
         <div class="project-block">
-          {% if project.title %}
-            <h3 class="project-title">Project {{ loop.index + project_index_offset }}: {{ project.title|safe }}</h3>
+          {% set proj_num = right_project_numbers[loop.index0] if right_project_numbers is defined else None %}
+          {% if proj_num and project.title %}
+            <h3 class="project-title">Project {{ proj_num }}: {{ project.title|safe }}</h3>
           {% endif %}
           {% if project.description %}
             <ul class="custom-arrow-list">
