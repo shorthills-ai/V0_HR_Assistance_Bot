@@ -1121,6 +1121,7 @@ elif page == "Upload & Process":
             st.info("⏳ Waiting for standardization...")
 
     # Display file preview if processed
+    # ...existing code...
     if st.session_state.standardized_files:
         st.subheader("👀 Preview Processed Resume")
         selected_file = st.selectbox(
@@ -1132,7 +1133,10 @@ elif page == "Upload & Process":
             with open(file_path, "r", encoding="utf-8") as f:
                 resume_data = json.load(f)
             st.markdown("---")
+            # Show Employee ID in the preview
+            st.info(f"**Employee ID:** {resume_data.get('employee_id', 'N/A')}")
             render_formatted_resume(resume_data)
+# ...existing code...
 
 # -------------------
 # Page: Database Management
