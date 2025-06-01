@@ -1174,7 +1174,7 @@ elif page == "Database Management":
                         resume_data = []
                         for res in results:
                             resume_data.append({
-                                "ID": res.get("ID", "N/A"),
+                                "employee_id": res.get("employee_id", "N/A"),
                                 "Name": res.get("name", "N/A"),
                                 "Email": res.get("email", "N/A"),
                                 "Skills": ", ".join(res.get("skills", [])[:3]) + ("..." if len(res.get("skills", [])) > 3 else "")
@@ -1246,7 +1246,7 @@ elif page == "Database Management":
                         search_field= "name"
                         query = {search_field: {"$regex": search_value, "$options": "i"}}
                     if search_field == "Employee_ID":
-                        search_field = "ID"
+                        search_field = "employee_id"
                         query = {search_field: {"$regex": search_value, "$options": "i"}}
                     if search_field == "Location":
                         search_field = "location"
