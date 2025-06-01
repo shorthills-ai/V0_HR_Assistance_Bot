@@ -1141,6 +1141,9 @@ elif page == "Upload & Process":
 # -------------------
 # Page: Database Management
 # -------------------
+# -------------------
+# Page: Database Management
+# -------------------
 elif page == "Database Management":
     st.title("💾 Resume Database Management")
     
@@ -1156,8 +1159,12 @@ elif page == "Database Management":
        - Employee ID 
        - Location
        - College/University
+    
+    3. **Update Resume Information:**
+       - Edit basic details
+       - Modify skills and experience
+       - Update contact information
     """)
-
 
     try:
         db_manager = ResumeDBManager()
@@ -1200,17 +1207,171 @@ elif page == "Database Management":
                             selected_resume = st.session_state.resume_display_map.get(selected_resume_option)
                             if selected_resume:
                                 st.markdown("---")
-                                render_formatted_resume(selected_resume)
-
-                                # Add delete button with confirmation logic
-                                if "delete_confirmation" not in st.session_state:
-                                    st.session_state.delete_confirmation = False
-
-                                if not st.session_state.delete_confirmation:
-                                    if st.button("🗑️ Delete Resume", key="delete_button"):
-                                        st.session_state.delete_confirmation = True
+                                
+                                # Action buttons
+                                col1, col2, col3 = st.columns(3)
+                                with col1:
+                                    view_mode = st.button("👁️ View Details", key="view_button", use_container_width=True)
+                                with col2:
+                                    edit_mode = st.button("✏️ Edit Resume", key="edit_button", use_container_width=True)
+                                with col3:
+                                    delete_mode = st.button("🗑️ Delete Resume", key="delete_button", use_container_width=True)
+                                
+                                # Initialize session state for edit mode
+                                if "edit_mode_active" not in st.session_state:
+                                    st.session_state.edit_mode_active = False
+                                if "current_edit_resume" not in st.session_state:
+                                    st.session_state.current_edit_resume = None
+                                
+                                if edit_mode:
+                                    st.session_state.edit_mode_active = True
+                                    st.session_state.current_edit_resume = selected_resume.copy()
+                                
+                                if view_mode:
+                                    st.session_state.edit_mode_active = False
+                                
+                                # Display content based on mode
+                                if st.session_state.edit_mode_active and st.session_state.current_edit_resume:
+                                    st.subheader("✏️ Edit Resume")
+                                    
+                                    # Create edit form
+                                    with st.form("edit_resume_form"):
+                                        st.markdown("### Basic Information")
+                                        col1, col2 = st.columns(2)
+                                        
+                                        with col1:
+                                            edited_name = st.text_input("Name", 
+                                                value=st.session_state.current_edit_resume.get("name", ""))
+                                            edited_email = st.text_input("Email", 
+                                                value=st.session_state.current_edit_resume.get("email", ""))
+                                            edited_phone = st.text_input("Phone", 
+                                                value=st.session_state.current_edit_resume.get("phone", ""))
+                                        
+                                        with col2:
+                                            edited_employee_id = st.text_input("Employee ID", 
+                                                value=st.session_state.current_edit_resume.get("employee_id", ""))
+                                            edited_location = st.text_input("Location", 
+                                                value=st.session_state.current_edit_resume.get("location", ""))
+                                            edited_linkedin = st.text_input("LinkedIn", 
+                                                value=st.session_state.current_edit_resume.get("linkedin", ""))
+                                        
+                                        st.markdown("### Skills")
+                                        current_skills = st.session_state.current_edit_resume.get("skills", [])
+                                        skills_text = ", ".join(current_skills) if isinstance(current_skills, list) else str(current_skills)
+                                        edited_skills = st.text_area("Skills (comma-separated)", 
+                                            value=skills_text,
+                                            help="Enter skills separated by commas")
+                                        
+                                        st.markdown("### Education")
+                                        education_data = st.session_state.current_edit_resume.get("education", [])
+                                        if isinstance(education_data, list) and education_data:
+                                            edu = education_data[0] if education_data else {}
+                                        else:
+                                            edu = education_data if isinstance(education_data, dict) else {}
+                                        
+                                        col1, col2 = st.columns(2)
+                                        with col1:
+                                            edited_degree = st.text_input("Degree", 
+                                                value=edu.get("degree", ""))
+                                            edited_institution = st.text_input("Institution", 
+                                                value=edu.get("institution", ""))
+                                        with col2:
+                                            edited_graduation_year = st.text_input("Graduation Year", 
+                                                value=str(edu.get("graduation_year", "")))
+                                            edited_gpa = st.text_input("GPA/Percentage", 
+                                                value=str(edu.get("gpa", "")))
+                                        
+                                        st.markdown("### Experience")
+                                        experience_data = st.session_state.current_edit_resume.get("experience", [])
+                                        if isinstance(experience_data, list) and experience_data:
+                                            exp = experience_data[0] if experience_data else {}
+                                        else:
+                                            exp = experience_data if isinstance(experience_data, dict) else {}
+                                        
+                                        col1, col2 = st.columns(2)
+                                        with col1:
+                                            edited_job_title = st.text_input("Current/Latest Job Title", 
+                                                value=exp.get("job_title", ""))
+                                            edited_company = st.text_input("Company", 
+                                                value=exp.get("company", ""))
+                                        with col2:
+                                            edited_duration = st.text_input("Duration", 
+                                                value=exp.get("duration", ""))
+                                            edited_experience_location = st.text_input("Work Location", 
+                                                value=exp.get("location", ""))
+                                        
+                                        edited_description = st.text_area("Job Description", 
+                                            value=exp.get("description", ""),
+                                            height=100)
+                                        
+                                        # Form submission buttons
+                                        col1, col2 = st.columns(2)
+                                        with col1:
+                                            submit_button = st.form_submit_button("💾 Save Changes", 
+                                                type="primary", use_container_width=True)
+                                        with col2:
+                                            cancel_button = st.form_submit_button("❌ Cancel", 
+                                                use_container_width=True)
+                                        
+                                        if submit_button:
+                                            try:
+                                                # Prepare updated data
+                                                updated_data = {
+                                                    "name": edited_name,
+                                                    "email": edited_email,
+                                                    "phone": edited_phone,
+                                                    "employee_id": edited_employee_id,
+                                                    "location": edited_location,
+                                                    "linkedin": edited_linkedin,
+                                                    "skills": [skill.strip() for skill in edited_skills.split(",") if skill.strip()],
+                                                    "education": [{
+                                                        "degree": edited_degree,
+                                                        "institution": edited_institution,
+                                                        "graduation_year": edited_graduation_year,
+                                                        "gpa": edited_gpa
+                                                    }] if edited_degree or edited_institution else [],
+                                                    "experience": [{
+                                                        "job_title": edited_job_title,
+                                                        "company": edited_company,
+                                                        "duration": edited_duration,
+                                                        "location": edited_experience_location,
+                                                        "description": edited_description
+                                                    }] if edited_job_title or edited_company else []
+                                                }
+                                                
+                                                # Update in database
+                                                result = db_manager.collection.update_one(
+                                                    {"_id": selected_resume["_id"]},
+                                                    {"$set": updated_data}
+                                                )
+                                                
+                                                if result.modified_count > 0:
+                                                    st.success("✅ Resume updated successfully!")
+                                                    # Refresh the data
+                                                    st.session_state.all_resumes_results = db_manager.find({})
+                                                    st.session_state.edit_mode_active = False
+                                                    st.rerun()
+                                                else:
+                                                    st.warning("No changes were made to the resume.")
+                                                    
+                                            except Exception as e:
+                                                st.error(f"Error updating resume: {e}")
+                                        
+                                        if cancel_button:
+                                            st.session_state.edit_mode_active = False
+                                            st.rerun()
+                                
                                 else:
-                                    # Simulate a pop-up-like experience
+                                    # View mode - display resume details
+                                    render_formatted_resume(selected_resume)
+
+                                # Delete functionality
+                                if delete_mode:
+                                    if "delete_confirmation" not in st.session_state:
+                                        st.session_state.delete_confirmation = False
+                                    st.session_state.delete_confirmation = True
+
+                                if "delete_confirmation" in st.session_state and st.session_state.delete_confirmation:
                                     with st.container():
                                         st.error("⚠️ Are you sure you want to delete this resume? This action cannot be undone.")
                                         col1, col2 = st.columns(2)
@@ -1218,16 +1379,17 @@ elif page == "Database Management":
                                             if st.button("Yes, Delete", key="confirm_delete_button"):
                                                 try:
                                                     db_manager.delete_resume({"_id": selected_resume["_id"]})
-                                                    st.success(f" Deleted resume: {selected_resume.get('name', 'Unknown')}")
+                                                    st.success(f"✅ Deleted resume: {selected_resume.get('name', 'Unknown')}")
                                                     # Refresh the results after deletion
                                                     st.session_state.all_resumes_results = db_manager.find({})
-                                                    st.session_state.delete_confirmation = False  # Reset confirmation state
+                                                    st.session_state.delete_confirmation = False
+                                                    st.rerun()
                                                 except Exception as e:
                                                     st.error(f"Error deleting resume: {e}")
                                         with col2:
                                             if st.button("Cancel", key="cancel_delete_button"):
                                                 st.info("Deletion canceled.")
-                                                st.session_state.delete_confirmation = False  # Reset confirmation state
+                                                st.session_state.delete_confirmation = False
                             else:
                                 st.error("Could not find the selected resume. Please try again.")
         
@@ -1343,35 +1505,128 @@ elif page == "Database Management":
                     selected_resume = st.session_state.search_map.get(selected_search_result)
                     if selected_resume:
                         st.markdown("---")
-                        render_formatted_resume(selected_resume)
-
-                        # Add delete button with confirmation logic
-                        if "delete_confirmation" not in st.session_state:
-                            st.session_state.delete_confirmation = False
-
-                        if not st.session_state.delete_confirmation:
-                            if st.button("🗑️ Delete Resume", key="delete_button"):
-                                st.session_state.delete_confirmation = True
+                        
+                        # Action buttons for search results too
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            search_view_mode = st.button("👁️ View Details", key="search_view_button", use_container_width=True)
+                        with col2:
+                            search_edit_mode = st.button("✏️ Edit Resume", key="search_edit_button", use_container_width=True)
+                        with col3:
+                            search_delete_mode = st.button("🗑️ Delete Resume", key="search_delete_button", use_container_width=True)
+                        
+                        # Initialize session state for search edit mode
+                        if "search_edit_mode_active" not in st.session_state:
+                            st.session_state.search_edit_mode_active = False
+                        if "current_search_edit_resume" not in st.session_state:
+                            st.session_state.current_search_edit_resume = None
+                        
+                        if search_edit_mode:
+                            st.session_state.search_edit_mode_active = True
+                            st.session_state.current_search_edit_resume = selected_resume.copy()
+                        
+                        if search_view_mode:
+                            st.session_state.search_edit_mode_active = False
+                        
+                        # Display content based on mode (similar to above but with search_ prefix for keys)
+                        if st.session_state.search_edit_mode_active and st.session_state.current_search_edit_resume:
+                            # [Same edit form as above but with different keys to avoid conflicts]
+                            st.subheader("✏️ Edit Resume")
+                            
+                            with st.form("search_edit_resume_form"):
+                                st.markdown("### Basic Information")
+                                col1, col2 = st.columns(2)
+                                
+                                with col1:
+                                    edited_name = st.text_input("Name", 
+                                        value=st.session_state.current_search_edit_resume.get("name", ""))
+                                    edited_email = st.text_input("Email", 
+                                        value=st.session_state.current_search_edit_resume.get("email", ""))
+                                    edited_phone = st.text_input("Phone", 
+                                        value=st.session_state.current_search_edit_resume.get("phone", ""))
+                                
+                                with col2:
+                                    edited_employee_id = st.text_input("Employee ID", 
+                                        value=st.session_state.current_search_edit_resume.get("employee_id", ""))
+                                    edited_location = st.text_input("Location", 
+                                        value=st.session_state.current_search_edit_resume.get("location", ""))
+                                
+                                st.markdown("### Skills")
+                                current_skills = st.session_state.current_search_edit_resume.get("skills", [])
+                                skills_text = ", ".join(current_skills) if isinstance(current_skills, list) else str(current_skills)
+                                edited_skills = st.text_area("Skills (comma-separated)", 
+                                    value=skills_text,
+                                    help="Enter skills separated by commas")
+                                
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    search_submit_button = st.form_submit_button("💾 Save Changes", 
+                                        type="primary", use_container_width=True)
+                                with col2:
+                                    search_cancel_button = st.form_submit_button("❌ Cancel", 
+                                        use_container_width=True)
+                                
+                                if search_submit_button:
+                                    try:
+                                        updated_data = {
+                                            "name": edited_name,
+                                            "email": edited_email,
+                                            "phone": edited_phone,
+                                            "employee_id": edited_employee_id,
+                                            "location": edited_location,
+                                            "skills": [skill.strip() for skill in edited_skills.split(",") if skill.strip()]
+                                        }
+                                        
+                                        result = db_manager.collection.update_one(
+                                            {"_id": selected_resume["_id"]},
+                                            {"$set": updated_data}
+                                        )
+                                        
+                                        if result.modified_count > 0:
+                                            st.success("✅ Resume updated successfully!")
+                                            st.session_state.search_edit_mode_active = False
+                                            # Clear search results to force refresh
+                                            st.session_state.search_options = []
+                                            st.session_state.search_map = {}
+                                            st.rerun()
+                                        else:
+                                            st.warning("No changes were made to the resume.")
+                                            
+                                    except Exception as e:
+                                        st.error(f"Error updating resume: {e}")
+                                
+                                if search_cancel_button:
+                                    st.session_state.search_edit_mode_active = False
+                                    st.rerun()
+                        
                         else:
-                            # Simulate a pop-up-like experience
+                            render_formatted_resume(selected_resume)
+
+                        # Delete functionality for search results
+                        if search_delete_mode:
+                            if "search_delete_confirmation" not in st.session_state:
+                                st.session_state.search_delete_confirmation = False
+                            st.session_state.search_delete_confirmation = True
+
+                        if "search_delete_confirmation" in st.session_state and st.session_state.search_delete_confirmation:
                             with st.container():
                                 st.error("⚠️ Are you sure you want to delete this resume? This action cannot be undone.")
                                 col1, col2 = st.columns(2)
                                 with col1:
-                                    if st.button("Yes, Delete", key="confirm_delete_button"):
+                                    if st.button("Yes, Delete", key="search_confirm_delete_button"):
                                         try:
                                             db_manager.delete_resume({"_id": selected_resume["_id"]})
                                             st.success(f"✅ Deleted resume: {selected_resume.get('name', 'Unknown')}")
-                                            # Refresh the results after deletion
                                             st.session_state.search_options = []
                                             st.session_state.search_map = {}
-                                            st.session_state.delete_confirmation = False  # Reset confirmation state
+                                            st.session_state.search_delete_confirmation = False
+                                            st.rerun()
                                         except Exception as e:
                                             st.error(f"Error deleting resume: {e}")
                                 with col2:
-                                    if st.button("Cancel", key="cancel_delete_button"):
+                                    if st.button("Cancel", key="search_cancel_delete_button"):
                                         st.info("Deletion canceled.")
-                                        st.session_state.delete_confirmation = False  # Reset confirmation state
+                                        st.session_state.search_delete_confirmation = False
                     else:
                         st.error("Could not find the selected resume. Please try again.")
 
