@@ -19,6 +19,8 @@ from job_matcher import JobMatcher, JobDescriptionAnalyzer  # Import both classe
 import streamlit.components.v1 as components
 import uuid
 import base64
+from bson import ObjectId  # <-- Add this line near your other imports
+# ...existing code...
 # Set page configuration
 st.set_page_config(
     page_title="HR Resume Bot",

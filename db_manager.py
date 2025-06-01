@@ -99,19 +99,18 @@ class ResumeDBManager:
         return result
 
     def delete_resume(self, delete_data: dict):
-        """Delete a resume by _id."""
-        _id = delete_data.get("_id")
-        if not _id:
-            print("❌ Delete failed: '_id' field is required.")
+        """Delete a resume by employee_id."""
+        employee_id = delete_data.get("employee_id")
+        if not employee_id:
+            print("❌ Delete failed: 'employee_id' field is required.")
             return None
-        
-        # Ensure we're using just the ID string, not an object
-        result = self.collection.delete_one({"_id": _id})
+
+        result = self.collection.delete_one({"employee_id": employee_id})
         if result.deleted_count:
-            print(f"🗑️ Deleted resume with ID {_id}")
+            print(f"🗑️ Deleted resume with Employee ID {employee_id}")
         else:
-            print(f"⚠️ No resume found with ID {_id}")
-        return result
+            print(f"⚠️ No resume found with Employee ID {employee_id}")
+        return result    
         
     def delete_all_resumes(self):
         """Delete all resumes in the collection."""
