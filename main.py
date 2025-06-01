@@ -1045,38 +1045,6 @@ elif page == "JD-Resume Regeneration":
 elif page == "Database Management":
     st.title("💾 Resume Database Management")
     st.markdown("""
-        <style>
-        .stButton>button {
-            border-radius: 8px;
-            font-weight: 500;
-        }
-        .stTextInput>div>input {
-            border-radius: 8px;
-        }
-        .stSelectbox>div>div>select {
-            border-radius: 8px;
-        }
-        .stFileUploader>div>div>button {
-            border-radius: 8px;
-        }
-        .section-container {
-            background-color: #f8f9fa;
-            padding: 20px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .stMarkdown h3 {
-            color: #1f77b4;
-            margin-bottom: 15px;
-        }
-        .stMarkdown p {
-            color: #333;
-            line-height: 1.6;
-        }
-        </style>
-    """, unsafe_allow_html=True)
-    st.markdown("""
         Welcome to the **Resume Database Management** system. Upload, process, and manage candidate resumes with ease.  
         Use the sections below to upload new resumes or query and manage existing ones.
     """, unsafe_allow_html=True)
