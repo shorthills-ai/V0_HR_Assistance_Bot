@@ -1309,7 +1309,7 @@ elif page == "Database Management":
                                     with col1:
                                         if st.button("Yes, Delete", key="db_confirm_delete", type="primary"):
                                             try:
-                                                db_manager.delete_resume({"_id": ObjectId(st.session_state.selected_resume_id)})
+                                                db_manager.delete_resume({"employee_id": selected_resume.get("employee_id")})
                                                 st.success(f"✅ Deleted resume: {selected_resume.get('name', 'Unknown')}")
                                                 st.session_state.current_view_mode = "list"
                                                 st.session_state.all_resumes_results = db_manager.find({})
