@@ -1051,7 +1051,17 @@ elif page == "Database Management":
 
     try:
         db_manager = ResumeDBManager()
-
+        query_type = st.radio("Select Query Type", ["View All Resumes", "Search by Field"])
+        
+        # Initialize session states
+        if "current_view_mode" not in st.session_state:
+            st.session_state.current_view_mode = "list"  # list, view, edit, delete
+        if "selected_resume_id" not in st.session_state:
+            st.session_state.selected_resume_id = None
+        if "current_edit_data" not in st.session_state:
+            st.session_state.current_edit_data = None
+        if "last_selected_resume_id" not in st.session_state:
+            st.session_state.last_selected_resume_id = None
         # --- Upload & Process Section ---
         with st.container():
             st.markdown("<div class='section-container'>", unsafe_allow_html=True)
