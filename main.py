@@ -1177,6 +1177,8 @@ elif page == "Database Management":
             st.session_state.selected_resume_id = None
         if "current_edit_data" not in st.session_state:
             st.session_state.current_edit_data = None
+        if "last_selected_resume_id" not in st.session_state:
+            st.session_state.last_selected_resume_id = None
         
         if query_type == "View All Resumes":
             if "all_resumes_results" not in st.session_state:
@@ -1219,25 +1221,31 @@ elif page == "Database Management":
                             selected_resume_id = resume_id_map.get(selected_resume_option)
                             selected_resume = next((res for res in results if str(res["_id"]) == selected_resume_id), None)
                             
+                            # Check if user switched to a different resume
+                            if st.session_state.last_selected_resume_id != selected_resume_id:
+                                # Reset view mode and edit data when switching resumes
+                                st.session_state.current_view_mode = "list"
+                                st.session_state.current_edit_data = None
+                                st.session_state.last_selected_resume_id = selected_resume_id
+                            
                             if selected_resume:
                                 st.markdown("---")
                                 
-                                # Action buttons - only show when not in edit mode
-                                if st.session_state.current_view_mode != "edit":
-                                    col1, col2, col3 = st.columns(3)
-                                    with col1:
-                                        if st.button("👁️ View Details", key="view_btn", use_container_width=True):
-                                            st.session_state.current_view_mode = "view"
-                                            st.session_state.selected_resume_id = selected_resume_id
-                                    with col2:
-                                        if st.button("✏️ Edit Resume", key="edit_btn", use_container_width=True):
-                                            st.session_state.current_view_mode = "edit"
-                                            st.session_state.selected_resume_id = selected_resume_id
-                                            st.session_state.current_edit_data = selected_resume.copy()
-                                    with col3:
-                                        if st.button("🗑️ Delete Resume", key="delete_btn", use_container_width=True):
-                                            st.session_state.current_view_mode = "delete"
-                                            st.session_state.selected_resume_id = selected_resume_id
+                                # Action buttons - always show these
+                                col1, col2, col3 = st.columns(3)
+                                with col1:
+                                    if st.button("👁️ View Details", key="view_btn", use_container_width=True):
+                                        st.session_state.current_view_mode = "view"
+                                        st.session_state.selected_resume_id = selected_resume_id
+                                with col2:
+                                    if st.button("✏️ Edit Resume", key="edit_btn", use_container_width=True):
+                                        st.session_state.current_view_mode = "edit"
+                                        st.session_state.selected_resume_id = selected_resume_id
+                                        st.session_state.current_edit_data = selected_resume.copy()
+                                with col3:
+                                    if st.button("🗑️ Delete Resume", key="delete_btn", use_container_width=True):
+                                        st.session_state.current_view_mode = "delete"
+                                        st.session_state.selected_resume_id = selected_resume_id
                                 
                                 # Display content based on current mode
                                 if st.session_state.current_view_mode == "edit" and st.session_state.current_edit_data:
@@ -1268,7 +1276,37 @@ elif page == "Database Management":
                                             value=skills_text,
                                             help="Enter skills separated by commas")
                                         
+                                        # Education section
+                                        st.markdown("### Education")
+                                        current_education = st.session_state.current_edit_data.get("education", [])
+                                        if current_education and len(current_education) > 0:
+                                            edu = current_education[0] if isinstance(current_education, list) else current_education
+                                            edited_degree = st.text_input("Degree", value=edu.get("degree", ""))
+                                            edited_institution = st.text_input("Institution", value=edu.get("institution", ""))
+                                            edited_graduation_year = st.text_input("Graduation Year", value=str(edu.get("graduation_year", "")))
+                                            edited_gpa = st.text_input("GPA", value=str(edu.get("gpa", "")))
+                                        else:
+                                            edited_degree = st.text_input("Degree", value="")
+                                            edited_institution = st.text_input("Institution", value="")
+                                            edited_graduation_year = st.text_input("Graduation Year", value="")
+                                            edited_gpa = st.text_input("GPA", value="")
                                         
+                                        # Experience section
+                                        st.markdown("### Experience")
+                                        current_experience = st.session_state.current_edit_data.get("experience", [])
+                                        if current_experience and len(current_experience) > 0:
+                                            exp = current_experience[0] if isinstance(current_experience, list) else current_experience
+                                            edited_job_title = st.text_input("Job Title", value=exp.get("job_title", ""))
+                                            edited_company = st.text_input("Company", value=exp.get("company", ""))
+                                            edited_duration = st.text_input("Duration", value=exp.get("duration", ""))
+                                            edited_experience_location = st.text_input("Experience Location", value=exp.get("location", ""))
+                                            edited_description = st.text_area("Description", value=exp.get("description", ""))
+                                        else:
+                                            edited_job_title = st.text_input("Job Title", value="")
+                                            edited_company = st.text_input("Company", value="")
+                                            edited_duration = st.text_input("Duration", value="")
+                                            edited_experience_location = st.text_input("Experience Location", value="")
+                                            edited_description = st.text_area("Description", value="")
                                         
                                         # Form buttons
                                         col1, col2 = st.columns(2)
@@ -1307,6 +1345,7 @@ elif page == "Database Management":
                                                         st.success("✅ Resume updated successfully!")
                                                         # Reset states and refresh data
                                                         st.session_state.current_view_mode = "list"
+                                                        st.session_state.current_edit_data = None
                                                         st.session_state.all_resumes_results = db_manager.find({})
                                                         st.rerun()
                                                     else:
@@ -1318,6 +1357,7 @@ elif page == "Database Management":
                                         with col2:
                                             if st.form_submit_button("❌ Cancel", use_container_width=True):
                                                 st.session_state.current_view_mode = "list"
+                                                st.session_state.current_edit_data = None
                                                 st.rerun()
                                 
                                 elif st.session_state.current_view_mode == "view":
