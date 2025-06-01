@@ -1162,7 +1162,6 @@ elif page == "Database Management":
     
     3. **Update Resume Information:**
        - Edit basic details
-       - Modify skills and experience
        - Update contact information
     """)
 
