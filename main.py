@@ -1039,373 +1039,404 @@ elif page == "JD-Resume Regeneration":
 # -------------------
 # ...existing code...
 
-
-
-# Page: Database Management
 elif page == "Database Management":
     st.title("💾 Resume Database Management")
+    
     st.markdown("""
-        Welcome to the **Resume Database Management** system. Upload, process, and manage candidate resumes with ease.  
-        Use the sections below to upload new resumes or query and manage existing ones.
-    """, unsafe_allow_html=True)
+    ### Database Operations
+    
+    #### Available Operations:
+    1. **Upload & Process Resume:**
+       - Upload a single PDF or DOC resume
+       - Automatically parse, standardize, and store in the database
+    2. **View All Resumes:**
+       - See complete list of candidates in database
+       - View detailed information in table format
+    3. **Search Candidates By:**
+       - Name
+       - Employee ID 
+       - Location
+       - College/University
+    4. **Update Resume Information:**
+       - Edit basic details
+       - Update contact information
+    """)
 
     try:
         db_manager = ResumeDBManager()
-        query_type = st.radio("Select Query Type", ["View All Resumes", "Search by Field"])
+
+        # --- Resume Upload Section ---
+        st.subheader("📄 Upload & Process Resume")
+        st.markdown("""
+        **Supported formats:** PDF, DOC  
+        **Note:** Employee ID is required.
+        """)
+
+        # Employee ID input
+        employee_id = st.text_input("Enter Employee ID (required)", key="db_employee_id_input")
+
+        # File uploader
+        uploaded_file = st.file_uploader(
+            "📤 Upload Resume File (PDF or DOC)", 
+            type=["pdf", "doc"], 
+            accept_multiple_files=False,
+            key="db_resume_uploader",
+            help="Upload a single resume file"
+        )
+
+        # Processing button
+        if uploaded_file:
+            if not employee_id.strip():
+                st.warning("Please enter an Employee ID before processing.")
+            else:
+                if st.button("🚀 Process Resume", type="primary", key="db_process_resume", use_container_width=True):
+                    with st.spinner("Processing resume..."):
+                        # Step 1: Parse
+                        process_uploaded_files([uploaded_file])
+                        st.success("✅ Parsing complete!")
+
+                        # Step 2: Standardize
+                        asyncio.run(standardize_resumes())
+                        st.success("✅ Standardization complete!")
+
+                        # Step 3: Validate and reprocess if necessary
+                        validate_and_reprocess_resumes([uploaded_file])
+
+                        # Step 4: Inject Employee ID and upload to MongoDB
+                        for file_path in st.session_state.standardized_files:
+                            try:
+                                with open(file_path, "r+", encoding="utf-8") as f:
+                                    data = json.load(f)
+                                    data["employee_id"] = employee_id.strip()
+                                    f.seek(0)
+                                    json.dump(data, f, indent=2, ensure_ascii=False)
+                                    f.truncate()
+                            except Exception as e:
+                                st.error(f"Error adding Employee ID to {file_path.name}: {e}")
+                        upload_to_mongodb()
+                        st.success("✅ Database upload complete!")
+        else:
+            st.info("👆 Please upload a PDF or DOC resume file to begin processing")
+
+        # Display processing status
+        st.subheader("📊 Processing Status")
+        status_col1, status_col2, status_col3 = st.columns(3)
+        with status_col1:
+            if st.session_state.processing_complete:
+                st.success(f"✅ Parsed {len(st.session_state.processed_files)} file(s)")
+            else:
+                st.info("⏳ Waiting for parsing...")
+        with status_col2:
+            if st.session_state.standardizing_complete:
+                st.success(f"✅ Standardized {len(st.session_state.standardized_files)} file(s)")
+            elif st.session_state.processing_complete:
+                st.info("⏳ Ready to standardize")
+            else:
+                st.info("⏳ Waiting for parsing...")
+        with status_col3:
+            if st.session_state.db_upload_complete:
+                st.success(f"✅ Uploaded {len(st.session_state.uploaded_files)} file(s) to MongoDB")
+            elif st.session_state.standardizing_complete:
+                st.info("⏳ Ready to upload to MongoDB")
+            else:
+                st.info("⏳ Waiting for standardization...")
+
+        # --- Database Operations Section ---
+        st.subheader("🔍 Database Query & Management")
+        query_type = st.radio("Select Query Type", ["View All Resumes", "Search by Field"], key="db_query_type")
         
-        # Initialize session states
+        # Initialize session states for database operations
         if "current_view_mode" not in st.session_state:
-            st.session_state.current_view_mode = "list"  # list, view, edit, delete
+            st.session_state.current_view_mode = "list"
         if "selected_resume_id" not in st.session_state:
             st.session_state.selected_resume_id = None
         if "current_edit_data" not in st.session_state:
             st.session_state.current_edit_data = None
         if "last_selected_resume_id" not in st.session_state:
             st.session_state.last_selected_resume_id = None
-        # --- Upload & Process Section ---
-        with st.container():
-            st.markdown("<div class='section-container'>", unsafe_allow_html=True)
-            st.subheader("📄 Upload & Process Resume")
-            st.markdown("""
-                Upload a single PDF or DOC resume for automated processing.  
-                The system will parse, standardize, and store the resume in the database.  
-                **Supported formats:** PDF, DOC | **Required:** Employee ID
-            """, unsafe_allow_html=True)
+        if "all_resumes_results" not in st.session_state:
+            st.session_state.all_resumes_results = []
 
-            col1, col2 = st.columns([2, 1])
-            with col1:
-                employee_id = st.text_input("Employee ID", placeholder="Enter unique Employee ID", key="db_employee_id_input")
-            with col2:
-                uploaded_file = st.file_uploader(
-                    "Upload Resume", 
-                    type=["pdf", "doc"], 
-                    accept_multiple_files=False,
-                    key="db_resume_uploader",
-                    help="Upload a single PDF or DOC resume file"
-                )
-
-            if uploaded_file:
-                if not employee_id.strip():
-                    st.warning("⚠️ Please enter an Employee ID to proceed.")
-                else:
-                    if st.button("🚀 Process Resume", type="primary", key="db_process_resume", use_container_width=True):
-                        with st.spinner("Processing resume..."):
-                            # Step 1: Parse
-                            process_uploaded_files([uploaded_file])
-                            st.success("✅ Parsing complete!")
-
-                            # Step 2: Standardize
-                            asyncio.run(standardize_resumes())
-                            st.success("✅ Standardization complete!")
-
-                            # Step 3: Validate and reprocess
-                            validate_and_reprocess_resumes([uploaded_file])
-
-                            # Step 4: Inject Employee ID and upload to MongoDB
-                            for file_path in st.session_state.standardized_files:
-                                try:
-                                    with open(file_path, "r+", encoding="utf-8") as f:
-                                        data = json.load(f)
-                                        data["employee_id"] = employee_id.strip()
-                                        f.seek(0)
-                                        json.dump(data, f, indent=2, ensure_ascii=False)
-                                        f.truncate()
-                                except Exception as e:
-                                    st.error(f"❌ Error adding Employee ID to {file_path.name}: {e}")
-                            upload_to_mongodb()
-                            st.success("✅ Database upload complete!")
-
-            else:
-                st.info("👆 Upload a resume file to start processing.")
-
-            # Processing Status
-            st.markdown("**Processing Status**")
-            status_col1, status_col2, status_col3 = st.columns(3)
-            with status_col1:
-                st.metric("Parsed Files", f"{len(st.session_state.processed_files)}", delta=None if not st.session_state.processing_complete else "✅")
-            with status_col2:
-                st.metric("Standardized Files", f"{len(st.session_state.standardized_files)}", delta=None if not st.session_state.standardizing_complete else "✅")
-            with status_col3:
-                st.metric("Uploaded to DB", f"{len(st.session_state.uploaded_files)}", delta=None if not st.session_state.db_upload_complete else "✅")
-            st.markdown("</div>", unsafe_allow_html=True)
-
-        # --- Database Query & Management Section ---
-        with st.container():
-            st.markdown("<div class='section-container'>", unsafe_allow_html=True)
-            st.subheader("🔍 Query & Manage Resumes")
-            st.markdown("""
-                View all resumes, search by specific fields, or edit/delete existing records.  
-                Select an operation below to get started.
-            """, unsafe_allow_html=True)
-
-            query_type = st.radio(
-                "Select Operation", 
-                ["View All Resumes", "Search by Field"], 
-                key="db_query_type", 
-                horizontal=True
-            )
-
-            if query_type == "View All Resumes":
-                if st.button("📋 Fetch All Resumes", key="db_fetch_all", use_container_width=True) or st.session_state.all_resumes_results:
-                    with st.spinner("Fetching resumes..."):
-                        if not st.session_state.all_resumes_results:
-                            st.session_state.all_resumes_results = db_manager.find({})
-                        results = st.session_state.all_resumes_results
-                        st.success(f"Found {len(results)} resumes")
-
-                        if results:
-                            resume_data = [
-                                {
-                                    "Employee ID": res.get("employee_id", "N/A"),
-                                    "Name": res.get("name", "N/A"),
-                                    "Email": res.get("email", "N/A"),
-                                    "Skills": ", ".join(res.get("skills", [])[:3]) + ("..." if len(res.get("skills", [])) > 3 else "")
-                                }
-                                for res in results
-                            ]
-                            st.dataframe(resume_data, use_container_width=True)
-
-                            resume_options = []
-                            resume_id_map = {}
-                            for res in results:
-                                display_text = f"{res.get('name', 'Unknown')} - {res.get('email', 'No email')}"
-                                resume_options.append(display_text)
-                                resume_id_map[display_text] = str(res["_id"])
-
-                            selected_resume_option = st.selectbox(
-                                "Select a resume", 
-                                options=resume_options if resume_options else ["No resumes found"],
-                                key="db_resume_selector"
-                            )
-
-                            if selected_resume_option and "No resumes found" not in selected_resume_option:
-                                selected_resume_id = resume_id_map.get(selected_resume_option)
-                                selected_resume = next((res for res in results if str(res["_id"]) == selected_resume_id), None)
-
-                                if st.session_state.last_selected_resume_id != selected_resume_id:
-                                    st.session_state.current_view_mode = "list"
-                                    st.session_state.current_edit_data = None
-                                    st.session_state.last_selected_resume_id = selected_resume_id
-
-                                if selected_resume:
-                                    st.markdown("---")
-                                    col1, col2, col3 = st.columns(3)
-                                    with col1:
-                                        if st.button("👁️ View", key="db_view_btn", use_container_width=True):
-                                            st.session_state.current_view_mode = "view"
-                                            st.session_state.selected_resume_id = selected_resume_id
-                                    with col2:
-                                        if st.button("✏️ Edit", key="db_edit_btn", use_container_width=True):
-                                            st.session_state.current_view_mode = "edit"
-                                            st.session_state.selected_resume_id = selected_resume_id
-                                            st.session_state.current_edit_data = selected_resume.copy()
-                                    with col3:
-                                        if st.button("🗑️ Delete", key="db_delete_btn", use_container_width=True):
-                                            st.session_state.current_view_mode = "delete"
-                                            st.session_state.selected_resume_id = selected_resume_id
-
-                                    if st.session_state.current_view_mode == "edit" and st.session_state.current_edit_data:
-                                        st.subheader("✏️ Edit Resume")
-                                        with st.form("db_edit_resume_form"):
-                                            st.markdown("**Basic Information**")
-                                            col1, col2 = st.columns(2)
-                                            with col1:
-                                                edited_name = st.text_input("Name", value=st.session_state.current_edit_data.get("name", ""), key="db_edit_name")
-                                                edited_email = st.text_input("Email", value=st.session_state.current_edit_data.get("email", ""), key="db_edit_email")
-                                                edited_phone = st.text_input("Phone", value=st.session_state.current_edit_data.get("phone", ""), key="db_edit_phone")
-                                            with col2:
-                                                edited_employee_id = st.text_input("Employee ID", value=st.session_state.current_edit_data.get("employee_id", ""), key="db_edit_employee_id")
-                                                edited_location = st.text_input("Location", value=st.session_state.current_edit_data.get("location", ""), key="db_edit_location")
-
-                                            st.markdown("**Skills**")
-                                            current_skills = st.session_state.current_edit_data.get("skills", [])
-                                            skills_text = ", ".join(current_skills) if isinstance(current_skills, list) else str(current_skills)
-                                            edited_skills = st.text_area("Skills (comma-separated)", value=skills_text, key="db_edit_skills", help="Enter skills separated by commas")
-
-                                            col1, col2 = st.columns(2)
-                                            with col1:
-                                                if st.form_submit_button("💾 Save Changes", type="primary", use_container_width=True):
-                                                    try:
-                                                        updated_data = {
-                                                            "name": edited_name,
-                                                            "email": edited_email,
-                                                            "phone": edited_phone,
-                                                            "employee_id": edited_employee_id,
-                                                            "location": edited_location,
-                                                            "skills": [skill.strip() for skill in edited_skills.split(",") if skill.strip()]
-                                                        }
-                                                        result = db_manager.collection.update_one(
-                                                            {"_id": ObjectId(st.session_state.selected_resume_id)},
-                                                            {"$set": updated_data}
-                                                        )
-                                                        if result.modified_count > 0:
-                                                            st.success("✅ Resume updated successfully!")
-                                                            st.session_state.current_view_mode = "list"
-                                                            st.session_state.current_edit_data = None
-                                                            st.session_state.all_resumes_results = db_manager.find({})
-                                                            st.rerun()
-                                                        else:
-                                                            st.warning("No changes were made to the resume.")
-                                                    except Exception as e:
-                                                        st.error(f"❌ Error updating resume: {e}")
-                                            with col2:
-                                                if st.form_submit_button("❌ Cancel", use_container_width=True):
-                                                    st.session_state.current_view_mode = "list"
-                                                    st.session_state.current_edit_data = None
-                                                    st.rerun()
-
-                                    elif st.session_state.current_view_mode == "view":
-                                        st.subheader("📄 Resume Details")
+        if query_type == "View All Resumes":
+            if st.button("📥 Fetch All Resumes", key="db_fetch_all", use_container_width=True) or st.session_state.all_resumes_results:
+                with st.spinner("Fetching resumes..."):
+                    if not st.session_state.all_resumes_results:
+                        st.session_state.all_resumes_results = db_manager.find({})
+                    results = st.session_state.all_resumes_results
+                    st.success(f"Found {len(results)} resumes")
+                    
+                    if results:
+                        # Show summary table
+                        resume_data = []
+                        for res in results:
+                            resume_data.append({
+                                "Employee ID": res.get("employee_id", "N/A"),
+                                "Name": res.get("name", "N/A"),
+                                "Email": res.get("email", "N/A"),
+                                "Skills": ", ".join(res.get("skills", [])[:3]) + ("..." if len(res.get("skills", [])) > 3 else "")
+                            })
+                        st.dataframe(resume_data, use_container_width=True)
+                        
+                        # Create resume options
+                        resume_options = []
+                        resume_id_map = {}
+                        for res in results:
+                            display_text = f"{res.get('name', 'Unknown')} - {res.get('email', 'No email')}"
+                            resume_options.append(display_text)
+                            resume_id_map[display_text] = str(res["_id"])
+                        
+                        selected_resume_option = st.selectbox(
+                            "Select resume to view details", 
+                            options=resume_options if resume_options else ["No resumes found"],
+                            key="db_resume_selector"
+                        )
+                        
+                        if selected_resume_option and "No resumes found" not in selected_resume_option:
+                            selected_resume_id = resume_id_map.get(selected_resume_option)
+                            selected_resume = next((res for res in results if str(res["_id"]) == selected_resume_id), None)
+                            
+                            if st.session_state.last_selected_resume_id != selected_resume_id:
+                                st.session_state.current_view_mode = "list"
+                                st.session_state.current_edit_data = None
+                                st.session_state.last_selected_resume_id = selected_resume_id
+                            
+                            if selected_resume:
+                                st.markdown("---")
+                                
+                                # Action buttons
+                                col1, col2, col3 = st.columns(3)
+                                with col1:
+                                    if st.button("👁️ View Details", key="db_view_btn", use_container_width=True):
+                                        st.session_state.current_view_mode = "view"
+                                        st.session_state.selected_resume_id = selected_resume_id
+                                with col2:
+                                    if st.button("✏️ Edit Resume", key="db_edit_btn", use_container_width=True):
+                                        st.session_state.current_view_mode = "edit"
+                                        st.session_state.selected_resume_id = selected_resume_id
+                                        st.session_state.current_edit_data = selected_resume.copy()
+                                with col3:
+                                    if st.button("🗑️ Delete Resume", key="db_delete_btn", use_container_width=True):
+                                        st.session_state.current_view_mode = "delete"
+                                        st.session_state.selected_resume_id = selected_resume_id
+                                
+                                # Display content based on mode
+                                if st.session_state.current_view_mode == "edit" and st.session_state.current_edit_data:
+                                    st.subheader("✏️ Edit Resume")
+                                    
+                                    with st.form("db_edit_resume_form"):
+                                        st.markdown("### Basic Information")
+                                        col1, col2 = st.columns(2)
+                                        
+                                        with col1:
+                                            edited_name = st.text_input("Name", 
+                                                value=st.session_state.current_edit_data.get("name", ""), key="db_edit_name")
+                                            edited_email = st.text_input("Email", 
+                                                value=st.session_state.current_edit_data.get("email", ""), key="db_edit_email")
+                                            edited_phone = st.text_input("Phone", 
+                                                value=st.session_state.current_edit_data.get("phone", ""), key="db_edit_phone")
+                                        
+                                        with col2:
+                                            edited_employee_id = st.text_input("Employee ID", 
+                                                value=st.session_state.current_edit_data.get("employee_id", ""), key="db_edit_employee_id")
+                                            edited_location = st.text_input("Location", 
+                                                value=st.session_state.current_edit_data.get("location", ""), key="db_edit_location")
+                                        
+                                        st.markdown("### Skills")
+                                        current_skills = st.session_state.current_edit_data.get("skills", [])
+                                        skills_text = ", ".join(current_skills) if isinstance(current_skills, list) else str(current_skills)
+                                        edited_skills = st.text_area("Skills (comma-separated)", 
+                                            value=skills_text, key="db_edit_skills",
+                                            help="Enter skills separated by commas")
+                                        
+                                        # Form buttons
                                         col1, col2 = st.columns(2)
                                         with col1:
-                                            st.markdown(f"**Name:** {selected_resume.get('name', 'N/A')}")
-                                            st.markdown(f"**Email:** {selected_resume.get('email', 'N/A')}")
-                                            st.markdown(f"**Phone:** {selected_resume.get('phone', 'N/A')}")
+                                            if st.form_submit_button("💾 Save Changes", type="primary", use_container_width=True):
+                                                try:
+                                                    updated_data = {
+                                                        "name": edited_name,
+                                                        "email": edited_email,
+                                                        "phone": edited_phone,
+                                                        "employee_id": edited_employee_id,
+                                                        "location": edited_location,
+                                                        "skills": [skill.strip() for skill in edited_skills.split(",") if skill.strip()]
+                                                    }
+                                                    result = db_manager.collection.update_one(
+                                                        {"_id": ObjectId(st.session_state.selected_resume_id)},
+                                                        {"$set": updated_data}
+                                                    )
+                                                    if result.modified_count > 0:
+                                                        st.success("✅ Resume updated successfully!")
+                                                        st.session_state.current_view_mode = "list"
+                                                        st.session_state.current_edit_data = None
+                                                        st.session_state.all_resumes_results = db_manager.find({})
+                                                        st.rerun()
+                                                    else:
+                                                        st.warning("No changes were made to the resume.")
+                                                except Exception as e:
+                                                    st.error(f"Error updating resume: {e}")
                                         with col2:
-                                            st.markdown(f"**Employee ID:** {selected_resume.get('employee_id', 'N/A')}")
-                                            st.markdown(f"**Location:** {selected_resume.get('location', 'N/A')}")
-                                        st.markdown("**Skills**")
-                                        skills = selected_resume.get('skills', [])
-                                        st.markdown(", ".join(skills) if skills else "No skills listed")
-                                        if st.button("← Back to List", key="db_back_to_list"):
+                                            if st.form_submit_button("❌ Cancel", use_container_width=True):
+                                                st.session_state.current_view_mode = "list"
+                                                st.session_state.current_edit_data = None
+                                                st.rerun()
+                                
+                                elif st.session_state.current_view_mode == "view":
+                                    st.subheader("📄 Resume Details")
+                                    col1, col2 = st.columns(2)
+                                    with col1:
+                                        st.write(f"**Name:** {selected_resume.get('name', 'N/A')}")
+                                        st.write(f"**Email:** {selected_resume.get('email', 'N/A')}")
+                                        st.write(f"**Phone:** {selected_resume.get('phone', 'N/A')}")
+                                    with col2:
+                                        st.write(f"**Employee ID:** {selected_resume.get('employee_id', 'N/A')}")
+                                        st.write(f"**Location:** {selected_resume.get('location', 'N/A')}")
+                                    
+                                    st.markdown("### 🛠️ Skills")
+                                    skills = selected_resume.get('skills', [])
+                                    st.write(", ".join(skills) if skills else "No skills listed")
+                                    
+                                    if st.button("← Back to List", key="db_back_to_list"):
+                                        st.session_state.current_view_mode = "list"
+                                        st.rerun()
+                                
+                                elif st.session_state.current_view_mode == "delete":
+                                    st.error("⚠️ Are you sure you want to delete this resume? This action cannot be undone.")
+                                    st.write(f"**Resume:** {selected_resume.get('name', 'Unknown')} - {selected_resume.get('email', 'No email')}")
+                                    col1, col2 = st.columns(2)
+                                    with col1:
+                                        if st.button("Yes, Delete", key="db_confirm_delete", type="primary"):
+                                            try:
+                                                db_manager.delete_resume({"_id": ObjectId(st.session_state.selected_resume_id)})
+                                                st.success(f"✅ Deleted resume: {selected_resume.get('name', 'Unknown')}")
+                                                st.session_state.current_view_mode = "list"
+                                                st.session_state.all_resumes_results = db_manager.find({})
+                                                st.rerun()
+                                            except Exception as e:
+                                                st.error(f"Error deleting resume: {e}")
+                                    with col2:
+                                        if st.button("Cancel", key="db_cancel_delete"):
                                             st.session_state.current_view_mode = "list"
                                             st.rerun()
-
-                                    elif st.session_state.current_view_mode == "delete":
-                                        st.error("⚠️ Are you sure you want to delete this resume? This action cannot be undone.")
-                                        st.markdown(f"**Resume:** {selected_resume.get('name', 'Unknown')} - {selected_resume.get('email', 'No email')}")
-                                        col1, col2 = st.columns(2)
-                                        with col1:
-                                            if st.button("Yes, Delete", key="db_confirm_delete", type="primary"):
-                                                try:
-                                                    db_manager.delete_resume({"_id": ObjectId(st.session_state.selected_resume_id)})
-                                                    st.success(f"✅ Deleted resume: {selected_resume.get('name', 'Unknown')}")
-                                                    st.session_state.current_view_mode = "list"
-                                                    st.session_state.all_resumes_results = db_manager.find({})
-                                                    st.rerun()
-                                                except Exception as e:
-                                                    st.error(f"❌ Error deleting resume: {e}")
-                                        with col2:
-                                            if st.button("Cancel", key="db_cancel_delete"):
-                                                st.session_state.current_view_mode = "list"
-                                                st.rerun()
-
-            elif query_type == "Search by Field":
-                col1, col2 = st.columns(2)
-                with col1:
-                    search_field = st.selectbox(
-                        "Search Field", 
-                        ["Name", "Employee_ID", "Location", "College"],
-                        key="db_search_field"
-                    )
-                with col2:
-                    search_value = st.text_input("Search Value", placeholder="Enter search term", key="db_search_value")
-
-                if st.button("🔍 Search", key="db_search_btn", use_container_width=True):
-                    if search_value:
-                        query = {}
-                        if search_field == "Name":
-                            query = {"name": {"$regex": search_value, "$options": "i"}}
-                        elif search_field == "Employee_ID":
-                            query = {"employee_id": {"$regex": search_value, "$options": "i"}}
-                        elif search_field == "Location":
-                            query = {"location": {"$regex": search_value, "$options": "i"}}
-                        elif search_field == "College":
-                            search_field_db = "education.institution"
-                            special_institutes = {
-                                "iit": ["IIT", "Indian Institute of Technology", "Indian Inst of Technology", 
-                                       "Indian Inst. of Technology", "Indian Institute Technology", "Indian Inst Technology"],
-                                "iim": ["IIM", "Indian Institute of Management", "Indian Inst of Management", 
-                                       "Indian Inst. of Management", "Indian Institute Management", "Indian Inst Management"],
-                                "iiit": ["IIIT", "Indian Institute of Information Technology", "Indian Inst of Information Technology", 
-                                        "Indian Inst. of Information Technology", "Indian Institute Information Technology", "Indian Inst Information Technology"],
-                                "nit": ["NIT", "National Institute of Technology", "National Inst of Technology", 
-                                       "National Inst. of Technology", "National Institute Technology", "National Inst Technology"]
-                            }
-                            search_val_norm = search_value.strip().lower()
-                            matched = None
-                            for key, variants in special_institutes.items():
-                                if any(search_val_norm == v.lower() for v in variants):
-                                    matched = key
-                                    break
-                            if matched:
-                                regex_parts = []
-                                for variant in special_institutes[matched]:
-                                    if variant.upper() == matched.upper():
-                                        regex_parts.append(rf"(^|\s){variant}(\s|$)")
-                                    else:
-                                        regex_parts.append(variant)
-                                regex_pattern = "(" + "|".join(regex_parts) + ")"
-                                query = {search_field_db: {"$regex": regex_pattern, "$options": "i"}}
-                            else:
-                                query = {search_field_db: {"$regex": f"(^|\\s){search_value}(\\s|$)", "$options": "i"}}
-
-                        with st.spinner("Searching..."):
-                            results = db_manager.find(query)
-                            if results:
-                                st.success(f"Found {len(results)} matching resumes")
-                                search_options = []
-                                st.session_state.search_results = results
-                                for res in results:
-                                    display_text = f"{res.get('name', 'Unknown')} - {res.get('email', 'No email')}"
-                                    search_options.append(display_text)
-                                st.session_state.search_options = search_options
-                            else:
-                                st.warning("No matching resumes found")
-                                st.session_state.search_results = []
-                                st.session_state.search_options = []
-
-                if "search_options" in st.session_state and st.session_state.search_options:
-                    selected_search_result = st.selectbox(
-                        "Select a resume", 
-                        options=st.session_state.search_options,
-                        key="db_search_selector"
-                    )
-
-                    if selected_search_result:
-                        selected_resume = next(
-                            (res for res in st.session_state.search_results 
-                             if f"{res.get('name', 'Unknown')} - {res.get('email', 'No email')}" == selected_search_result),
-                            None
-                        )
-
-                        if selected_resume:
-                            st.markdown("---")
-                            col1, col2, col3 = st.columns(3)
+        
+        elif query_type == "Search by Field":
+            col1, col2 = st.columns(2)
+            with col1:
+                search_field = st.selectbox(
+                    "Search Field", 
+                    ["Name", "Employee_ID", "Location", "College"],
+                    key="db_search_field"
+                )
+            with col2:
+                search_value = st.text_input("Search Value", key="db_search_value")
+            
+            if st.button("🔍 Search", key="db_search_btn", use_container_width=True):
+                if search_value:
+                    query = {}
+                    if search_field == "Name":
+                        query = {"name": {"$regex": search_value, "$options": "i"}}
+                    elif search_field == "Employee_ID":
+                        query = {"employee_id": {"$regex": search_value, "$options": "i"}}
+                    elif search_field == "Location":
+                        query = {"location": {"$regex": search_value, "$options": "i"}}
+                    elif search_field == "College":
+                        search_field_db = "education.institution"
+                        special_institutes = {
+                            "iit": ["IIT", "Indian Institute of Technology", "Indian Inst of Technology", 
+                                   "Indian Inst. of Technology", "Indian Institute Technology", "Indian Inst Technology"],
+                            "iim": ["IIM", "Indian Institute of Management", "Indian Inst of Management", 
+                                   "Indian Inst. of Management", "Indian Institute Management", "Indian Inst Management"],
+                            "iiit": ["IIIT", "Indian Institute of Information Technology", "Indian Inst of Information Technology", 
+                                    "Indian Inst. of Information Technology", "Indian Institute Information Technology", "Indian Inst Information Technology"],
+                            "nit": ["NIT", "National Institute of Technology", "National Inst of Technology", 
+                                   "National Inst. of Technology", "National Institute Technology", "National Inst Technology"]
+                        }
+                        search_val_norm = search_value.strip().lower()
+                        matched = None
+                        for key, variants in special_institutes.items():
+                            if any(search_val_norm == v.lower() for v in variants):
+                                matched = key
+                                break
+                        if matched:
+                            regex_parts = []
+                            for variant in special_institutes[matched]:
+                                if variant.upper() == matched.upper():
+                                    regex_parts.append(rf"(^|\s){variant}(\s|$)")
+                                else:
+                                    regex_parts.append(variant)
+                            regex_pattern = "(" + "|".join(regex_parts) + ")"
+                            query = {search_field_db: {"$regex": regex_pattern, "$options": "i"}}
+                        else:
+                            query = {search_field_db: {"$regex": f"(^|\\s){search_value}(\\s|$)", "$options": "i"}}
+                    
+                    with st.spinner("Searching..."):
+                        results = db_manager.find(query)
+                        if results:
+                            st.success(f"Found {len(results)} matching resumes")
+                            search_options = []
+                            st.session_state.search_results = results
+                            for res in results:
+                                display_text = f"{res.get('name', 'Unknown')} - {res.get('email', 'No email')}"
+                                search_options.append(display_text)
+                            st.session_state.search_options = search_options
+                        else:
+                            st.warning("No matching resumes found")
+                            st.session_state.search_results = []
+                            st.session_state.search_options = []
+                else:
+                    st.warning("Please enter a search value")
+            
+            if "search_options" in st.session_state and st.session_state.search_options:
+                selected_search_result = st.selectbox(
+                    "Select resume to view details", 
+                    options=st.session_state.search_options,
+                    key="db_search_selector"
+                )
+                
+                if selected_search_result:
+                    selected_resume = None
+                    for res in st.session_state.search_results:
+                        display_text = f"{res.get('name', 'Unknown')} - {res.get('email', 'No email')}"
+                        if display_text == selected_search_result:
+                            selected_resume = res
+                            break
+                    
+                    if selected_resume:
+                        st.markdown("---")
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            if st.button("👁️ View Details", key="db_search_view_btn", use_container_width=True):
+                                st.session_state.current_view_mode = "view"
+                                st.session_state.selected_resume_id = str(selected_resume["_id"])
+                        with col2:
+                            if st.button("✏️ Edit Resume", key="db_search_edit_btn", use_container_width=True):
+                                st.session_state.current_view_mode = "edit"
+                                st.session_state.selected_resume_id = str(selected_resume["_id"])
+                                st.session_state.current_edit_data = selected_resume.copy()
+                        with col3:
+                            if st.button("🗑️ Delete Resume", key="db_search_delete_btn", use_container_width=True):
+                                st.session_state.current_view_mode = "delete"
+                                st.session_state.selected_resume_id = str(selected_resume["_id"])
+                        
+                        if st.session_state.current_view_mode == "view":
+                            st.subheader("📄 Resume Details")
+                            col1, col2 = st.columns(2)
                             with col1:
-                                if st.button("👁️ View", key="db_search_view_btn", use_container_width=True):
-                                    st.session_state.current_view_mode = "view"
-                                    st.session_state.selected_resume_id = str(selected_resume["_id"])
+                                st.write(f"**Name:** {selected_resume.get('name', 'N/A')}")
+                                st.write(f"**Email:** {selected_resume.get('email', 'N/A')}")
+                                st.write(f"**Phone:** {selected_resume.get('phone', 'N/A')}")
                             with col2:
-                                if st.button("✏️ Edit", key="db_search_edit_btn", use_container_width=True):
-                                    st.session_state.current_view_mode = "edit"
-                                    st.session_state.selected_resume_id = str(selected_resume["_id"])
-                                    st.session_state.current_edit_data = selected_resume.copy()
-                            with col3:
-                                if st.button("🗑️ Delete", key="db_search_delete_btn", use_container_width=True):
-                                    st.session_state.current_view_mode = "delete"
-                                    st.session_state.selected_resume_id = str(selected_resume["_id"])
-
-                            if st.session_state.current_view_mode == "view":
-                                st.subheader("📄 Resume Details")
-                                col1, col2 = st.columns(2)
-                                with col1:
-                                    st.markdown(f"**Name:** {selected_resume.get('name', 'N/A')}")
-                                    st.markdown(f"**Email:** {selected_resume.get('email', 'N/A')}")
-                                    st.markdown(f"**Phone:** {selected_resume.get('phone', 'N/A')}")
-                                with col2:
-                                    st.markdown(f"**Employee ID:** {selected_resume.get('employee_id', 'N/A')}")
-                                    st.markdown(f"**Location:** {selected_resume.get('location', 'N/A')}")
-                                st.markdown("**Skills**")
-                                skills = selected_resume.get('skills', [])
-                                st.markdown(", ".join(skills) if skills else "No skills listed")
-                                if st.button("← Back to Search", key="db_back_to_search"):
-                                    st.session_state.current_view_mode = "list"
-                                    st.rerun()
-            st.markdown("</div>", unsafe_allow_html=True)
+                                st.write(f"**Employee ID:** {selected_resume.get('employee_id', 'N/A')}")
+                                st.write(f"**Location:** {selected_resume.get('location', 'N/A')}")
+                            st.markdown("### 🛠️ Skills")
+                            skills = selected_resume.get('skills', [])
+                            st.write(", ".join(skills) if skills else "No skills listed")
+                            if st.button("← Back to Search", key="db_back_to_search"):
+                                st.session_state.current_view_mode = "list"
+                                st.rerun()
 
     except Exception as e:
-        st.error(f"❌ Error connecting to database: {e}")
+        st.error(f"Error connecting to database: {e}")
 
 def job_matcher_page():
     st.title("JD-Resume Regeneration")
