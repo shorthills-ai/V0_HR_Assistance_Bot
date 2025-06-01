@@ -1276,37 +1276,6 @@ elif page == "Database Management":
                                             value=skills_text,
                                             help="Enter skills separated by commas")
                                         
-                                        # Education section
-                                        st.markdown("### Education")
-                                        current_education = st.session_state.current_edit_data.get("education", [])
-                                        if current_education and len(current_education) > 0:
-                                            edu = current_education[0] if isinstance(current_education, list) else current_education
-                                            edited_degree = st.text_input("Degree", value=edu.get("degree", ""))
-                                            edited_institution = st.text_input("Institution", value=edu.get("institution", ""))
-                                            edited_graduation_year = st.text_input("Graduation Year", value=str(edu.get("graduation_year", "")))
-                                            edited_gpa = st.text_input("GPA", value=str(edu.get("gpa", "")))
-                                        else:
-                                            edited_degree = st.text_input("Degree", value="")
-                                            edited_institution = st.text_input("Institution", value="")
-                                            edited_graduation_year = st.text_input("Graduation Year", value="")
-                                            edited_gpa = st.text_input("GPA", value="")
-                                        
-                                        # Experience section
-                                        st.markdown("### Experience")
-                                        current_experience = st.session_state.current_edit_data.get("experience", [])
-                                        if current_experience and len(current_experience) > 0:
-                                            exp = current_experience[0] if isinstance(current_experience, list) else current_experience
-                                            edited_job_title = st.text_input("Job Title", value=exp.get("job_title", ""))
-                                            edited_company = st.text_input("Company", value=exp.get("company", ""))
-                                            edited_duration = st.text_input("Duration", value=exp.get("duration", ""))
-                                            edited_experience_location = st.text_input("Experience Location", value=exp.get("location", ""))
-                                            edited_description = st.text_area("Description", value=exp.get("description", ""))
-                                        else:
-                                            edited_job_title = st.text_input("Job Title", value="")
-                                            edited_company = st.text_input("Company", value="")
-                                            edited_duration = st.text_input("Duration", value="")
-                                            edited_experience_location = st.text_input("Experience Location", value="")
-                                            edited_description = st.text_area("Description", value="")
                                         
                                         # Form buttons
                                         col1, col2 = st.columns(2)
