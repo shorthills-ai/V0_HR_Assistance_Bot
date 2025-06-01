@@ -11,40 +11,48 @@ class ResumeDBManager:
         self.collection = self.db[st.secrets["mongo"]["collection_name"]]
 
     def insert_or_update_resume(self, resume: dict):
-        """Upsert a resume based on name and email.
-        
-        If a resume with the same name and email exists, it will be replaced.
-        Otherwise, a new resume will be inserted.
+        """Upsert a resume based on name, email, or employee_id.
+
+        If a resume with the same employee_id exists, it will be replaced.
+        Otherwise, fallback to name and email, or just name/email.
         """
-        # Create a query to find existing resume by name and email
-        # It's ok for values to be null, so we need to handle that case
         query = {}
-        
-        # Only add fields to query if they exist and are not empty
-        if resume.get("name") and resume.get("email"):
+
+        # Prefer employee_id for upsert if present
+        if resume.get("employee_id"):
+            query = {"employee_id": resume.get("employee_id")}
+        elif resume.get("name") and resume.get("email"):
             query = {"name": resume.get("name"), "email": resume.get("email")}
         elif resume.get("name"):
             query = {"name": resume.get("name")}
         elif resume.get("email"):
             query = {"email": resume.get("email")}
-        
+
         # If we have a valid query, try to upsert
-        if query:                
-            # Perform the upsert operation
+        if query:
+            if "_id" not in resume:
+                resume["_id"] = str(uuid.uuid4())
             result = self.collection.replace_one(query, resume, upsert=True)
-            
             if result.matched_count:
-                print(f"✅ Updated existing resume for {resume.get('name', 'Unknown')} ({resume.get('email', 'No email')}) with ID: {resume.get('_id')}")
+                print(
+                    f"✅ Updated existing resume for {resume.get('name', 'Unknown')} "
+                    f"({resume.get('email', 'No email')}) | Employee ID: {resume.get('employee_id', 'N/A')}"
+                )
                 return resume.get("_id")
             else:
-                print(f"✅ Inserted new resume for {resume.get('name', 'Unknown')} ({resume.get('email', 'No email')}) with ID: {resume.get('_id')}")
+                print(
+                    f"✅ Inserted new resume for {resume.get('name', 'Unknown')} "
+                    f"({resume.get('email', 'No email')}) | Employee ID: {resume.get('employee_id', 'N/A')}"
+                )
                 return resume.get("_id")
         else:
             # If we don't have a valid query, just insert with a new ID
             if "_id" not in resume:
                 resume["_id"] = str(uuid.uuid4())
             result = self.collection.insert_one(resume)
-            print(f"✅ Inserted document with new ID: {result.inserted_id}")
+            print(
+                f"✅ Inserted document with new ID: {result.inserted_id} | Employee ID: {resume.get('employee_id', 'N/A')}"
+            )
             return result.inserted_id
         
     def bulk_insert(self, folder_path: str):
