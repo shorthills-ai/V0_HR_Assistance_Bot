@@ -1268,47 +1268,7 @@ elif page == "Database Management":
                                             value=skills_text,
                                             help="Enter skills separated by commas")
                                         
-                                        st.markdown("### Education")
-                                        education_data = st.session_state.current_edit_data.get("education", [])
-                                        if isinstance(education_data, list) and education_data:
-                                            edu = education_data[0]
-                                        else:
-                                            edu = education_data if isinstance(education_data, dict) else {}
                                         
-                                        col1, col2 = st.columns(2)
-                                        with col1:
-                                            edited_degree = st.text_input("Degree", 
-                                                value=edu.get("degree", ""))
-                                            edited_institution = st.text_input("Institution", 
-                                                value=edu.get("institution", ""))
-                                        with col2:
-                                            edited_graduation_year = st.text_input("Graduation Year", 
-                                                value=str(edu.get("graduation_year", "")))
-                                            edited_gpa = st.text_input("GPA/Percentage", 
-                                                value=str(edu.get("gpa", "")))
-                                        
-                                        st.markdown("### Experience")
-                                        experience_data = st.session_state.current_edit_data.get("experience", [])
-                                        if isinstance(experience_data, list) and experience_data:
-                                            exp = experience_data[0]
-                                        else:
-                                            exp = experience_data if isinstance(experience_data, dict) else {}
-                                        
-                                        col1, col2 = st.columns(2)
-                                        with col1:
-                                            edited_job_title = st.text_input("Current/Latest Job Title", 
-                                                value=exp.get("job_title", ""))
-                                            edited_company = st.text_input("Company", 
-                                                value=exp.get("company", ""))
-                                        with col2:
-                                            edited_duration = st.text_input("Duration", 
-                                                value=exp.get("duration", ""))
-                                            edited_experience_location = st.text_input("Work Location", 
-                                                value=exp.get("location", ""))
-                                        
-                                        edited_description = st.text_area("Job Description", 
-                                            value=exp.get("description", ""),
-                                            height=100)
                                         
                                         # Form buttons
                                         col1, col2 = st.columns(2)
