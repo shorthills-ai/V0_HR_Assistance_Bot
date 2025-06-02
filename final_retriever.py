@@ -519,6 +519,7 @@ def main():
     
     # Store unique documents using a dictionary with _id as key
     unique_matching_docs = {}
+    doc_frequencies = {}  # Store frequency information for each document
     
     for idx, doc in enumerate(docs):
         try:
@@ -542,6 +543,15 @@ def main():
                 search_terms = extract_search_terms(parsed_query, bsp.quoted_phrases)
                 st.session_state[f"matched_terms_{doc_id}"] = search_terms
                 
+                # Calculate keyword frequencies
+                print(f"\nProcessing document {doc_id}")
+                frequencies = count_keyword_frequencies(norm_text, search_terms)
+                total_frequency = get_total_frequency(frequencies)
+                doc_frequencies[doc_id] = {
+                    'frequencies': frequencies,
+                    'total': total_frequency
+                }
+                
                 # Pre-highlight the entire document
                 highlighted_doc = highlight_dict_values(doc, search_terms)
                 st.session_state[f"highlighted_doc_{doc_id}"] = highlighted_doc
@@ -551,8 +561,13 @@ def main():
 
     progress_bar.empty()
 
-    # Get list of unique matching documents
-    matching_docs_list = list(unique_matching_docs.values())
+    # Sort documents by total frequency
+    sorted_docs = sorted(
+        unique_matching_docs.items(),
+        key=lambda x: doc_frequencies[x[0]]['total'],
+        reverse=True
+    )
+    matching_docs_list = [doc for _, doc in sorted_docs]
 
     # Display results
     if matching_docs_list:
@@ -566,6 +581,7 @@ def main():
             for doc in matching_docs_list:
                 doc_id = str(doc.get('_id'))
                 matched_terms = st.session_state.get(f"matched_terms_{doc_id}", set())
+                frequency_info = doc_frequencies[doc_id]
                 
                 with st.container():
                     # Highlight the name and contact info
@@ -573,12 +589,18 @@ def main():
                     email = highlight_text(doc.get('email', 'No email provided'), matched_terms)
                     phone = highlight_text(doc.get('phone', 'No phone provided'), matched_terms)
                     
+                    # Create frequency summary
+                    freq_summary = " | ".join([f"{term}-{freq}" for term, freq in frequency_info['frequencies'].items() if freq > 0])
+                    
                     st.markdown(f"""
                     <div class="card">
                         <div class="candidate-name">{name}</div>
                         <div class="contact-info">
                             📧 {email} | 
                             📱 {phone}
+                        </div>
+                        <div class="frequency-info">
+                            🔍 Keyword Matches: {freq_summary}
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
@@ -623,6 +645,11 @@ def main():
             # Table view for comparison
             table_data = []
             for doc in matching_docs_list:
+                doc_id = str(doc.get('_id'))
+                
+                # Safely get frequency information with a default value
+                frequency_info = doc_frequencies.get(doc_id, {'frequencies': {}, 'total': 0})
+                
                 row = {
                     "Name": doc.get('name', 'Unknown'),
                     "Email": doc.get('email', 'N/A'),
@@ -633,10 +660,10 @@ def main():
                 # Add skills as comma-separated string
                 skills = doc.get('skills', [])
                 if isinstance(skills, list):
-                    row["Skills"] = ", ".join(skills[:3]) + ("..." if len(skills) > 3 else "")
+                    row["Skills"] = ", ".join(skills)
                 else:
                     row["Skills"] = str(skills)
-                
+
                 table_data.append(row)
             
             st.dataframe(table_data, use_container_width=True)
@@ -656,5 +683,50 @@ def run_retriever():
         # Initialize any other session state variables here
     
     main()
+
+def count_keyword_frequencies(text: str, search_terms: set) -> dict:
+    """Count the frequency of each search term in the text."""
+    frequencies = {}
+    text = text.lower()
+    
+    # Debug: Print the text being searched
+    print(f"\nSearching in text: {text[:200]}...")
+    
+    # First, normalize the text to handle special cases
+    text = re.sub(r'\s+', ' ', text)  # Normalize whitespace
+    
+    for term in search_terms:
+        # Debug: Print the term being searched
+        print(f"\nSearching for term: {term}")
+        
+        # For exact word matches
+        pattern = r'\b' + re.escape(term) + r'\b'
+        matches = list(re.finditer(pattern, text, re.IGNORECASE))
+        count = len(matches)
+        
+        # Debug: Print matches found
+        print(f"Exact matches found: {count}")
+        for match in matches:
+            print(f"Match at position {match.start()}: {match.group()}")
+        
+        # Also check for the term as part of other words
+        if len(term) > 3:  # Only for terms longer than 3 characters
+            pattern_no_boundary = re.escape(term)
+            matches_no_boundary = list(re.finditer(pattern_no_boundary, text, re.IGNORECASE))
+            count += len(matches_no_boundary)
+            
+            # Debug: Print partial matches found
+            print(f"Partial matches found: {len(matches_no_boundary)}")
+            for match in matches_no_boundary:
+                print(f"Partial match at position {match.start()}: {match.group()}")
+        
+        frequencies[term] = count
+        print(f"Total count for {term}: {count}")
+    
+    return frequencies
+
+def get_total_frequency(frequencies: dict) -> int:
+    """Calculate total frequency of all search terms."""
+    return sum(frequencies.values())
 
 __all__ = ['run_retriever', 'render_formatted_resume']
