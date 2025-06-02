@@ -1353,7 +1353,7 @@ elif page == "Database Management":
                                         if experience:
                                             if isinstance(experience, list):
                                                 for exp in experience:
-                                                    st.write(f"**{exp.get('job_title', 'N/A')}** at {exp.get('company', 'N/A')}")
+                                                    st.write(f"{exp.get('company', 'N/A')}")
                                                     if exp.get('duration'):
                                                         st.write(f"Duration: {exp.get('duration')}")
                                                     if exp.get('description'):
