@@ -86,32 +86,30 @@ class ResumeDBManager:
         return results
 
     def update_resume(self, update_data: dict):
-        """Update a resume by _id."""
-        _id = update_data.pop("_id", None)
-        if not _id:
-            print("❌ Update failed: '_id' field is required.")
+        """Update a resume by employee_id."""
+        employee_id = update_data.pop("employee_id", None)
+        if not employee_id:
+            print("❌ Update failed: 'employee_id' field is required.")
             return None
-        result = self.collection.update_one({"_id": _id}, {"$set": update_data})
+        result = self.collection.update_one({"employee_id": employee_id}, {"$set": update_data})
         if result.modified_count:
-            print(f"✅ Updated resume with ID {_id}")
+            print(f"✅ Updated resume with Employee ID {employee_id}")
         else:
-            print(f"⚠️ No resume found or no change for ID {_id}")
+            print(f"⚠️ No resume found or no change for Employee ID {employee_id}")
         return result
-
     def delete_resume(self, delete_data: dict):
-        """Delete a resume by _id."""
-        _id = delete_data.get("_id")
-        if not _id:
-            print("❌ Delete failed: '_id' field is required.")
+        """Delete a resume by employee_id."""
+        employee_id = delete_data.get("employee_id")
+        if not employee_id:
+            print("❌ Delete failed: 'employee_id' field is required.")
             return None
-        
-        # Ensure we're using just the ID string, not an object
-        result = self.collection.delete_one({"_id": _id})
+
+        result = self.collection.delete_one({"employee_id": employee_id})
         if result.deleted_count:
-            print(f"🗑️ Deleted resume with ID {_id}")
+            print(f"🗑️ Deleted resume with Employee ID {employee_id}")
         else:
-            print(f"⚠️ No resume found with ID {_id}")
-        return result
+            print(f"⚠️ No resume found with Employee ID {employee_id}")
+        return result    
         
     def delete_all_resumes(self):
         """Delete all resumes in the collection."""
