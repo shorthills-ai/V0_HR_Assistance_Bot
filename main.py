@@ -1042,7 +1042,6 @@ elif page == "JD-Resume Regeneration":
 # ...existing code...
 
 elif page == "Database Management":
-    st.title("💾 Resume Database Management")if page == "Database Management":
     st.title("💾 Resume Database Management")
     
     st.markdown("""
@@ -1096,11 +1095,9 @@ elif page == "Database Management":
                     with st.spinner("Processing resume..."):
                         # Step 1: Parse
                         process_uploaded_files([uploaded_file])
-                        st.success("✅ Parsing complete!")
 
                         # Step 2: Standardize
                         asyncio.run(standardize_resumes())
-                        st.success("✅ Standardization complete!")
 
                         # Step 3: Validate and reprocess if necessary
                         validate_and_reprocess_resumes([uploaded_file])
@@ -1116,33 +1113,12 @@ elif page == "Database Management":
                                     f.truncate()
                             except Exception as e:
                                 st.error(f"Error adding Employee ID to {file_path.name}: {e}")
-                        upload_to_mongodb()
-                        st.success("✅ Database upload complete!")
+                                break
+                        else:
+                            upload_to_mongodb()
+                            st.success("✅ Resume processed and uploaded successfully!")
         else:
             st.info("👆 Please upload a PDF or DOC resume file to begin processing")
-
-        # Display processing status
-        st.subheader("📊 Processing Status")
-        status_col1, status_col2, status_col3 = st.columns(3)
-        with status_col1:
-            if st.session_state.processing_complete:
-                st.success(f"✅ Parsed {len(st.session_state.processed_files)} file(s)")
-            else:
-                st.info("⏳ Waiting for parsing...")
-        with status_col2:
-            if st.session_state.standardizing_complete:
-                st.success(f"✅ Standardized {len(st.session_state.standardized_files)} file(s)")
-            elif st.session_state.processing_complete:
-                st.info("⏳ Ready to standardize")
-            else:
-                st.info("⏳ Waiting for parsing...")
-        with status_col3:
-            if st.session_state.db_upload_complete:
-                st.success(f"✅ Uploaded {len(st.session_state.uploaded_files)} file(s) to MongoDB")
-            elif st.session_state.standardizing_complete:
-                st.info("⏳ Ready to upload to MongoDB")
-            else:
-                st.info("⏳ Waiting for standardization...")
 
         # --- Database Operations Section ---
         st.subheader("🔍 Database Query & Management")
@@ -1439,8 +1415,7 @@ elif page == "Database Management":
                                 st.rerun()
 
     except Exception as e:
-        st.error(f"Error connecting to database: {e}")
-    
+        st.error(f"Error connecting to database: {e}")  
     st.markdown("""
     ### Database Operations
     
