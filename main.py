@@ -1282,7 +1282,7 @@ elif page == "Database Management":
                                                             "skills": [skill.strip() for skill in edited_skills.split(",") if skill.strip()]
                                                         }
                                                         result = db_manager.collection.update_one(
-                                                            {"_id": ObjectId(st.session_state.selected_resume_id)},
+                                                            {"employee_id": selected_resume.get("employee_id")},
                                                             {"$set": updated_data}
                                                         )
                                                         
