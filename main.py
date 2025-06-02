@@ -101,25 +101,22 @@ elif page == "JD-Resume Regeneration":
     4. View detailed matching analysis
     5. See only the most relevant candidates
     """)
-elif page == "Upload & Process":
+elif page == "Resume Database Management":
     st.sidebar.markdown("""
-    ### 📤 Upload & Process
-    This page allows you to:
-    1. Upload multiple resume files (PDF/DOCX)
-    2. Automatically process them through our pipeline:
-       - Parse and extract content
-       - Standardize the format
-       - Store in database
-    3. Preview processed resumes
-    """)
-elif page == "Database Management":
-    st.sidebar.markdown("""
-    ### 💾 Database Management
+    ### 💾 Resume Database Management
     This page enables you to:
-    1. View all stored resumes
-    2. Search resumes by specific fields
-    3. View detailed resume information
-    4. Manage the resume database
+    1. **Upload & Process Resumes**:
+       - Upload multiple resume files (PDF/DOCX)
+       - Automatically process through our pipeline:
+         - Parse and extract content
+         - Standardize the format
+         - Store in database
+       - Preview processed resumes
+    2. **Manage Database**:
+       - View all stored resumes
+       - Search resumes by specific fields
+       - View detailed resume information
+       - Edit or delete resumes
     """)
 
 # Initialize session state for tracking job progress
@@ -1037,105 +1034,6 @@ elif page == "JD-Resume Regeneration":
 # -------------------
 # Page: Upload & Process Resumes
 # -------------------
-# ...existing code...
-
-elif page == "Upload & Process":
-    st.title("📄 Resume Processing Pipeline")
-    st.markdown("""
-    ### Streamlined Resume Processing
-    Upload a single PDF or DOC resume and let our AI-powered pipeline handle the rest. The system will automatically:
-    1. Extract and parse content from your resume
-    2. Standardize the information into a consistent format
-    3. Store the processed data in our database
-
-    **Supported formats:** PDF, DOC  
-    **Note:** Employee ID is required.
-    """)
-
-    # --- Add Employee ID input box ---
-    employee_id = st.text_input("Enter Employee ID (required)", key="employee_id_input")
-
-    uploaded_file = st.file_uploader(
-        "📤 Upload Resume File (PDF or DOC)", 
-        type=["pdf", "doc"], 
-        accept_multiple_files=False,
-        key="resume_uploader",
-        help="Upload a single resume file"
-    )
-    # Combined processing button
-    if uploaded_file:
-        if not employee_id.strip():
-            st.warning("Please enter an Employee ID before processing.")
-        else:
-            if st.button("🚀 Process Resume", type="primary", use_container_width=True):
-                with st.spinner("Processing resume..."):
-                    # Step 1: Parse
-                    process_uploaded_files([uploaded_file])
-                    st.success("✅ Parsing complete!")
-
-                    # Step 2: Standardize
-                    asyncio.run(standardize_resumes())
-                    st.success("✅ Standardization complete!")
-
-                    # Step 3: Validate and reprocess if necessary
-                    validate_and_reprocess_resumes([uploaded_file])
-
-                    # Step 4: Upload to MongoDB (inject Employee ID before upload)
-                    # --- Inject Employee ID into each standardized file ---
-                    for file_path in st.session_state.standardized_files:
-                        try:
-                            with open(file_path, "r+", encoding="utf-8") as f:
-                                data = json.load(f)
-                                data["employee_id"] = employee_id.strip()
-                                f.seek(0)
-                                json.dump(data, f, indent=2, ensure_ascii=False)
-                                f.truncate()
-                        except Exception as e:
-                            st.error(f"Error adding Employee ID to {file_path.name}: {e}")
-                    upload_to_mongodb()
-                    st.success("✅ Database upload complete!")
-    else:
-        st.info("👆 Please upload a PDF resume file to begin processing")
-
-    # Display processing status
-    st.subheader("📊 Processing Status")
-    status_col1, status_col2, status_col3 = st.columns(3)
-    with status_col1:
-        if st.session_state.processing_complete:
-            st.success(f"✅ Parsed {len(st.session_state.processed_files)} file(s)")
-        else:
-            st.info("⏳ Waiting for parsing...")
-    with status_col2:
-        if st.session_state.standardizing_complete:
-            st.success(f"✅ Standardized {len(st.session_state.standardized_files)} file(s)")
-        elif st.session_state.processing_complete:
-            st.info("⏳ Ready to standardize")
-        else:
-            st.info("⏳ Waiting for parsing...")
-    with status_col3:
-        if st.session_state.db_upload_complete:
-            st.success(f"✅ Uploaded {len(st.session_state.uploaded_files)} file(s) to MongoDB")
-        elif st.session_state.standardizing_complete:
-            st.info("⏳ Ready to upload to MongoDB")
-        else:
-            st.info("⏳ Waiting for standardization...")
-
-    # Display file preview if processed
-    if st.session_state.standardized_files:
-        st.subheader("👀 Preview Processed Resume")
-        selected_file = st.selectbox(
-            "Select a resume to preview", 
-            options=[f.name for f in st.session_state.standardized_files]
-        )
-        if selected_file:
-            file_path = standardized_dir / selected_file
-            with open(file_path, "r", encoding="utf-8") as f:
-                resume_data = json.load(f)
-            st.markdown("---")
-            # Show Employee ID in the preview
-            st.info(f"**Employee ID:** {resume_data.get('employee_id', 'N/A')}")
-            render_formatted_resume(resume_data)
-
 # -------------------
 # Page: Database Management
 # -------------------
