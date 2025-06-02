@@ -83,7 +83,6 @@ st.sidebar.title("HR Assistance Bot")
 page = st.sidebar.selectbox("Navigate", [
     "Resume Search Engine",
     "JD-Resume Regeneration",
-    "Upload & Process", 
     "Database Management", 
 ], index=0)  # Set index=0 to make Resume Search Engine the default
 
@@ -101,7 +100,7 @@ elif page == "JD-Resume Regeneration":
     4. View detailed matching analysis
     5. See only the most relevant candidates
     """)
-elif page == "Resume Database Management":
+elif page == "Database Management":
     st.sidebar.markdown("""
     ### 💾 Resume Database Management
     This page enables you to:
