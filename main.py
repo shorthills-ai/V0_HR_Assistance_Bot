@@ -1376,7 +1376,7 @@ elif page == "Database Management":
                                         with col1:
                                             if st.button("Yes, Delete", key="confirm_delete", type="primary"):
                                                 try:
-                                                    db_manager.delete_resume({"_id": ObjectId(st.session_state.selected_resume_id)})
+                                                    db_manager.delete_resume({"employee_id": selected_resume.get("employee_id")})
                                                     st.success(f"✅ Deleted resume: {selected_resume.get('name', 'Unknown')}")
                                                     # Reset and refresh
                                                     st.session_state.current_view_mode = "list"
@@ -1487,12 +1487,12 @@ elif page == "Database Management":
                             with col2:
                                 if st.button("✏️ Edit Resume", key="search_edit_btn", use_container_width=True):
                                     st.session_state.current_view_mode = "edit"
-                                    st.session_state.selected_resume_id = str(selected_resume["_id"])
+                                    st.session_state.selected_resume_id = selected_resume.get("employee_id")  # Use employee_id
                                     st.session_state.current_edit_data = selected_resume.copy()
                             with col3:
                                 if st.button("🗑️ Delete Resume", key="search_delete_btn", use_container_width=True):
                                     st.session_state.current_view_mode = "delete"
-                                    st.session_state.selected_resume_id = str(selected_resume["_id"])
+                                    st.session_state.selected_resume_id = selected_resume.get("employee_id")  # Use employee_id
                             
                             # Display based on mode
                             if st.session_state.current_view_mode == "view":
