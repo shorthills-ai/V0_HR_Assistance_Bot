@@ -10,6 +10,7 @@ pytesseract
 requests
 setuptools
 streamlit
+streamlit-aggrid
 opencv-python-headless
 wheel
 streamlit

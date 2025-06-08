@@ -19,6 +19,16 @@ from job_matcher import JobMatcher, JobDescriptionAnalyzer  # Import both classe
 import streamlit.components.v1 as components
 import uuid
 import base64
+import pandas as pd
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
+
+# Add this after imports, before any use
+
+def add_row_number_column(df):
+    df = df.copy()
+    df.insert(0, '#', range(1, len(df) + 1))
+    return df
+
 # Set page configuration
 st.set_page_config(
     page_title="HR Resume Bot",
@@ -83,6 +93,7 @@ st.sidebar.title("HR Assistance Bot")
 page = st.sidebar.selectbox("Navigate", [
     "Resume Search Engine",
     "JD-Resume Regeneration",
+    "Upload & Process", 
     "Database Management", 
 ], index=0)  # Set index=0 to make Resume Search Engine the default
 
@@ -100,22 +111,25 @@ elif page == "JD-Resume Regeneration":
     4. View detailed matching analysis
     5. See only the most relevant candidates
     """)
+elif page == "Upload & Process":
+    st.sidebar.markdown("""
+    ### 📤 Upload & Process
+    This page allows you to:
+    1. Upload multiple resume files (PDF/DOCX)
+    2. Automatically process them through our pipeline:
+       - Parse and extract content
+       - Standardize the format
+       - Store in database
+    3. Preview processed resumes
+    """)
 elif page == "Database Management":
     st.sidebar.markdown("""
-    ### 💾 Resume Database Management
+    ### 💾 Database Management
     This page enables you to:
-    1. **Upload & Process Resumes**:
-       - Upload multiple resume files (PDF/DOCX)
-       - Automatically process through our pipeline:
-         - Parse and extract content
-         - Standardize the format
-         - Store in database
-       - Preview processed resumes
-    2. **Manage Database**:
-       - View all stored resumes
-       - Search resumes by specific fields
-       - View detailed resume information
-       - Edit or delete resumes
+    1. View all stored resumes
+    2. Search resumes by specific fields
+    3. View detailed resume information
+    4. Manage the resume database
     """)
 
 # Initialize session state for tracking job progress
@@ -139,6 +153,18 @@ if "extracted_keywords" not in st.session_state:
     st.session_state.extracted_keywords = set()
 if "job_matcher_results" not in st.session_state:
     st.session_state.job_matcher_results = []
+
+# Initialize session state variables if they don't exist
+if 'expander_open_single' not in st.session_state:
+    st.session_state['expander_open_single'] = True
+if 'summary_generation_requested' not in st.session_state:
+    st.session_state['summary_generation_requested'] = False
+if 'summary_generation_complete' not in st.session_state:
+    st.session_state['summary_generation_complete'] = False
+
+# After other session state initializations near the top of the script:
+if 'resume_data' not in st.session_state:
+    st.session_state.resume_data = None
 
 def process_uploaded_files(uploaded_files):
     """Process uploaded resume files through the parser"""
@@ -332,7 +358,7 @@ def validate_and_reprocess_resumes(uploaded_files):
 
             # Check if 'name' is missing
             if not resume_data.get("name") or len(resume_data.get("name").split()[0]) < 2:
-                st.warning(f"{file_path.name}. Reprocessing...")
+                st.warning(f"⚠️ Missing 'name' in {file_path.name}. Reprocessing...")
                 reprocessed_count += 1
 
                 # Find the original file in uploaded files
@@ -420,7 +446,7 @@ elif page == "JD-Resume Regeneration":
     """)
 
     # Create two tabs for different search types
-    tab1, tab2 = st.tabs(["🔍 Company Database Search", "👤 Individual Candidate Search"])
+    tab1, tab2 = st.tabs(["🔍 Bulk Search ", "👤 Individual Retailor"])
 
     with tab1:
         st.markdown("### 🔍 Search Multiple Candidates")
@@ -461,6 +487,23 @@ elif page == "JD-Resume Regeneration":
                 st.success(f"✅ Found {len(accepted)} matching candidates")
                 st.subheader("📋 Detailed Candidate Profiles")
                 for cand in accepted:
+                    resume_key = f'resume_data_{cand["mongo_id"]}'
+                    view_mode_key = f'view_mode_{cand["mongo_id"]}'
+                    if view_mode_key not in st.session_state:
+                        st.session_state[view_mode_key] = 'original'
+                    if resume_key not in st.session_state or not st.session_state[resume_key]:
+                        st.session_state[resume_key] = copy.deepcopy(cand.get("resume", {}))
+                        for field, default in [
+                            ("education", []),
+                            ("certifications", []),
+                            ("projects", []),
+                            ("skills", []),
+                            ("name", ""),
+                            ("title", ""),
+                            ("summary", "")
+                        ]:
+                            st.session_state[resume_key].setdefault(field, default)
+                    resume_data = st.session_state[resume_key]
                     with st.expander(f"👤 {cand['name']} - Score: {cand['score']}/100", expanded=False):
                         st.markdown(f"""
                         <div class="card">
@@ -478,252 +521,396 @@ elif page == "JD-Resume Regeneration":
                         st.markdown("#### 📊 Matching Analysis")
                         st.markdown(cand["reason"])
 
-                        # Add retailor resume button
-                        if st.button("🔄 Retailor Resume", key=f"retailor_bulk_{cand['mongo_id']}"):
-                            with st.spinner("Retailoring resume..."):
-                                safe_resume = convert_objectid_to_str(cand["resume"])
-                                # Get matcher from session state
-                                matcher = st.session_state.get('matcher')
-                                if matcher:
-                                    new_res = matcher.resume_retailor.retailor_resume(
-                                        safe_resume,
-                                        st.session_state.extracted_keywords,
-                                        job_description
-                                    )
-                                if new_res:
-                                        st.success("Resume retailored successfully!")
-                                        # Store the retailored resume in session state
-                                        st.session_state[f'resume_data_{cand["mongo_id"]}'] = new_res
-                                        st.session_state[f'pdf_ready_{cand["mongo_id"]}'] = False
-                                else:
-                                    st.error("Error: Job matcher not initialized. Please try searching again.")
-
-                        # Show editable form and PDF generation if resume has been retailored
-                        if f'resume_data_{cand["mongo_id"]}' in st.session_state:
-                            with st.form(key=f"resume_edit_form_{cand['mongo_id']}"):
-                                resume_data = st.session_state[f'resume_data_{cand["mongo_id"]}']
-                                resume_data["name"] = st.text_input("Name", value=resume_data.get("name", ""))
-                                resume_data["title"] = st.text_input("Title", value=resume_data.get("title", ""))
-                                resume_data["summary"] = st.text_area("Summary", value=resume_data.get("summary", ""), height=100)
-                                
-                                st.subheader("Education")
-                                for i, edu in enumerate(resume_data["education"]):
-                                    st.markdown(f"**Education {i+1}**")
-                                    edu_col1, edu_col2, edu_col3 = st.columns(3)
-                                    with edu_col1:
-                                        edu["institution"] = st.text_input(f"Institution {i+1}", value=edu.get("institution", ""), key=f"institution_{cand['mongo_id']}_{i}")
-                                    with edu_col2:
-                                        edu["degree"] = st.text_input(f"Degree {i+1}", value=edu.get("degree", ""), key=f"degree_{cand['mongo_id']}_{i}")
-                                    with edu_col3:
-                                        edu["year"] = st.text_input(f"Year {i+1}", value=edu.get("year", ""), key=f"year_{cand['mongo_id']}_{i}")
-                                    btn_col1, btn_col2, btn_col3 = st.columns([1, 1, 1])
-                                    with btn_col1:
-                                        if st.form_submit_button(f"⬆️ Edu {i+1}"):
-                                            if i > 0:
-                                                resume_data["education"][i - 1], resume_data["education"][i] = resume_data["education"][i], resume_data["education"][i - 1]
-                                    with btn_col2:
-                                        if st.form_submit_button(f"⬇️ Edu {i+1}"):
-                                            if i < len(resume_data["education"]) - 1:
-                                                resume_data["education"][i + 1], resume_data["education"][i] = resume_data["education"][i], resume_data["education"][i + 1]
-                                    with btn_col3:
-                                        if st.form_submit_button(f"🗑️ Delete Edu {i+1}"):
-                                            resume_data["education"].pop(i)
-                                if st.form_submit_button("➕ Add Education"):
-                                    resume_data["education"].append({"institution": "", "degree": "", "year": ""})
-
-                                st.subheader("Certifications")
-                                # Ensure certifications is a list
-                                if "certifications" not in resume_data:
-                                    resume_data["certifications"] = []
-                                for i, cert in enumerate(resume_data["certifications"]):
-                                    st.markdown(f"**Certification {i+1}**")
-                                    # Handle both string and dict formats for certifications
-                                    if isinstance(cert, dict):
-                                        cert["title"] = st.text_input(f"Certification Title {i+1}", value=cert.get("title", ""), key=f"cert_title_{cand['mongo_id']}_{i}")
-                                        cert["issuer"] = st.text_input(f"Issuing Organization {i+1}", value=cert.get("issuer", ""), key=f"cert_issuer_{cand['mongo_id']}_{i}")
-                                        cert["year"] = st.text_input(f"Year {i+1}", value=cert.get("year", ""), key=f"cert_year_{cand['mongo_id']}_{i}")
+                        col_vm1, col_vm2 = st.columns([1, 1])
+                        with col_vm1:
+                            if st.button("👁️ View Original Resume", key=f"view_orig_{cand['mongo_id']}"):
+                                st.session_state[view_mode_key] = 'original'
+                        with col_vm2:
+                            if st.button("🔄 Retailor Resume", key=f"retailor_bulk_{cand['mongo_id']}"):
+                                with st.spinner("Retailoring resume..."):
+                                    safe_resume = convert_objectid_to_str(cand["resume"])
+                                    matcher = st.session_state.get('matcher')
+                                    if matcher:
+                                        new_res = matcher.resume_retailor.retailor_resume(
+                                            safe_resume,
+                                            st.session_state.extracted_keywords,
+                                            job_description
+                                        )
+                                        if new_res:
+                                            st.success("Resume retailored successfully!")
+                                            st.session_state[resume_key] = new_res
+                                            st.session_state[f'pdf_ready_{cand["mongo_id"]}'] = False
+                                            st.session_state[view_mode_key] = 'retailored'
                                     else:
-                                        # Convert string to dict format
-                                        cert_title = st.text_input(f"Certification Title {i+1}", value=str(cert), key=f"cert_title_{cand['mongo_id']}_{i}")
-                                        cert_issuer = st.text_input(f"Issuing Organization {i+1}", value="", key=f"cert_issuer_{cand['mongo_id']}_{i}")
-                                        cert_year = st.text_input(f"Year {i+1}", value="", key=f"cert_year_{cand['mongo_id']}_{i}")
-                                        resume_data["certifications"][i] = {"title": cert_title, "issuer": cert_issuer, "year": cert_year}
-                                    
-                                    cert_btn_col1, cert_btn_col2, cert_btn_col3 = st.columns([1, 1, 1])
-                                    with cert_btn_col1:
-                                        if st.form_submit_button(f"⬆️ Cert {i+1}"):
-                                            if i > 0:
-                                                resume_data["certifications"][i - 1], resume_data["certifications"][i] = resume_data["certifications"][i], resume_data["certifications"][i - 1]
-                                    with cert_btn_col2:
-                                        if st.form_submit_button(f"⬇️ Cert {i+1}"):
-                                            if i < len(resume_data["certifications"]) - 1:
-                                                resume_data["certifications"][i + 1], resume_data["certifications"][i] = resume_data["certifications"][i], resume_data["certifications"][i + 1]
-                                    with cert_btn_col3:
-                                        if st.form_submit_button(f"🗑️ Delete Cert {i+1}"):
-                                            resume_data["certifications"].pop(i)
-                                if st.form_submit_button("➕ Add Certification"):
-                                    resume_data["certifications"].append({"title": "", "issuer": "", "year": ""})
+                                        st.error("Error: Job matcher not initialized. Please try searching again.")
 
-                                st.subheader("Projects")
-                                for i, proj in enumerate(resume_data["projects"]):
-                                    st.markdown(f"**Project {i+1}**")
-                                    proj["title"] = st.text_input(f"Title {i+1}", value=proj.get("title", ""), key=f"title_{cand['mongo_id']}_{i}")
-                                    proj["description"] = st.text_area(f"Description {i+1}", value=proj.get("description", ""), key=f"desc_{cand['mongo_id']}_{i}", height=300)
-                                    proj_btn_col1, proj_btn_col2, proj_btn_col3 = st.columns([1, 1, 1])
-                                    with proj_btn_col1:
-                                        if st.form_submit_button(f"⬆️ Move Up {i+1}"):
-                                            if i > 0:
-                                                resume_data["projects"][i - 1], resume_data["projects"][i] = resume_data["projects"][i], resume_data["projects"][i - 1]
-                                    with proj_btn_col2:
-                                        if st.form_submit_button(f"⬇️ Move Down {i+1}"):
-                                            if i < len(resume_data["projects"]) - 1:
-                                                resume_data["projects"][i + 1], resume_data["projects"][i] = resume_data["projects"][i], resume_data["projects"][i + 1]
-                                    with proj_btn_col3:
-                                        if st.form_submit_button(f"🗑️ Delete {i+1}"):
-                                            resume_data["projects"].pop(i)
-                                if st.form_submit_button("➕ Add Project"):
+                        if st.session_state[view_mode_key] == 'original':
+                            st.markdown("---")
+                            st.markdown("### 📄 Original Resume (Read-Only)")
+                            render_formatted_resume(cand["resume"])
+
+                        elif st.session_state[view_mode_key] == 'retailored':
+                            # --- Paste your entire existing editable UI code for the retailored resume here ---
+                            # This includes all the editable fields, AgGrid tables, PDF/Word generation, etc.
+                            # For example:
+                            resume_data.setdefault("education", [])
+                            resume_data.setdefault("certifications", [])
+                            resume_data.setdefault("projects", [])
+                            resume_data.setdefault("skills", [])
+                            resume_data.setdefault("name", "")
+                            resume_data.setdefault("title", "")
+                            resume_data.setdefault("summary", "")
+
+                            colA, colB = st.columns([1, 2])
+                            with colA:
+                                resume_data["name"] = st.text_input("Name", value=resume_data.get("name", ""), key=f"name_bulk_{cand['mongo_id']}")
+                                resume_data["title"] = st.text_input("Title", value=resume_data.get("title", ""), key=f"title_bulk_{cand['mongo_id']}")
+                            with colB:
+                                resume_data["summary"] = st.text_area("Summary", value=resume_data.get("summary", ""), height=120, key=f"summary_bulk_{cand['mongo_id']}")
+                            st.markdown("---")
+            # ... (continue with the rest of your editable UI code for education, certifications, projects, skills, PDF/Word, etc.) ...
+
+                            # Container to hold PDF preview
+                            pdf_display_container = st.empty()
+                            st.subheader("Edit Resume Fields")
+
+                            # --- Education Section ---
+                            st.subheader("🎓 Education")
+                            edu_list = resume_data["education"]
+                            def normalize_edu(entry):
+                                entry.setdefault("institution", "")
+                                entry.setdefault("degree", "")
+                                entry.setdefault("year", "")
+                                return entry
+                            edu_list = [normalize_edu(e) for e in edu_list]
+                            if len(edu_list) == 0:
+                                edu_df = pd.DataFrame(columns=["Degree", "Institution", "Year"])
+                            else:
+                                edu_df = pd.DataFrame(edu_list)
+                                edu_df = edu_df.rename(columns={"institution": "Institution", "degree": "Degree", "year": "Year"})
+                            gb_edu = GridOptionsBuilder.from_dataframe(edu_df)
+                            gb_edu.configure_selection('multiple', use_checkbox=True)
+                            for col in edu_df.columns:
+                                gb_edu.configure_column(col, editable=True, cellStyle={"whiteSpace": "normal", "wordBreak": "break-word"}, tooltipField=col, resizable=True, flex=1)
+                            gb_edu.configure_grid_options(rowDragManaged=True, rowHeight=100)
+                            gridOptions_edu = gb_edu.build()
+                            edu_response = AgGrid(
+                                edu_df,
+                                gridOptions=gridOptions_edu,
+                                update_mode=GridUpdateMode.MODEL_CHANGED,
+                                allow_unsafe_jscode=True,
+                                theme="streamlit",
+                                height=300,
+                                fit_columns_on_grid_load=True,
+                                key=f"aggrid_edu_bulk_{cand['mongo_id']}"
+                            )
+                            updated_edu_df = pd.DataFrame(edu_response["data"])
+                            col_e1, col_e2 = st.columns([1,1])
+                            with col_e1:
+                                if st.button("➕ Add Education", key=f"add_edu_bulk_{cand['mongo_id']}"):
+                                    resume_data["education"].append({"institution": "", "degree": "", "year": ""})
+                                    st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
+                                    st.success("Added new education entry.")
+                                    st.rerun()
+                            with col_e2:
+                                if st.button("🗑️ Delete Checked Education", key=f"del_edu_bulk_{cand['mongo_id']}"):
+                                    selected_rows = edu_response['selected_rows']
+                                    if not selected_rows.empty:
+                                        selected_set = set((row['Institution'], row['Degree'], row['Year']) for _, row in selected_rows.iterrows())
+                                        resume_data["education"] = [
+                                            row for row in resume_data["education"]
+                                            if (row.get("institution", ""), row.get("degree", ""), row.get("year", "")) not in selected_set
+                                        ]
+                                        st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
+                                        st.success("Deleted selected education entries.")
+                                        st.rerun()
+                                    else:
+                                        st.error("No rows selected for deletion.")
+                            st.markdown("---")
+
+                            # --- Certifications Section ---
+                            st.subheader("🏅 Certifications")
+                            cert_list = resume_data["certifications"]
+                            def normalize_cert(entry):
+                                if not isinstance(entry, dict):
+                                    entry = {"title": str(entry)}
+                                entry.setdefault("title", "")
+                                entry.setdefault("issuer", "")
+                                entry.setdefault("year", "")
+                                entry.setdefault("link", "")
+                                return entry
+                            certs_fixed = [normalize_cert(c) for c in cert_list]
+                            if len(certs_fixed) == 0:
+                                cert_df = pd.DataFrame(columns=["Title", "Issuer", "Year", "link"])
+                            else:
+                                cert_df = pd.DataFrame(certs_fixed)
+                                cert_df = cert_df.rename(columns={"title": "Title", "issuer": "Issuer", "year": "Year", "link": "link"})
+                            gb_cert = GridOptionsBuilder.from_dataframe(cert_df)
+                            gb_cert.configure_selection('multiple', use_checkbox=True)
+                            for col in cert_df.columns:
+                                gb_cert.configure_column(col, editable=True, cellStyle={"whiteSpace": "normal", "wordBreak": "break-word"}, tooltipField=col, resizable=True, flex=1)
+                            gb_cert.configure_grid_options(rowDragManaged=True, rowHeight=100)
+                            gridOptions_cert = gb_cert.build()
+                            cert_response = AgGrid(
+                                cert_df,
+                                gridOptions=gridOptions_cert,
+                                update_mode=GridUpdateMode.MODEL_CHANGED,
+                                allow_unsafe_jscode=True,
+                                theme="streamlit",
+                                height=300,
+                                fit_columns_on_grid_load=True,
+                                key=f"aggrid_cert_bulk_{cand['mongo_id']}"
+                            )
+                            updated_cert_df = pd.DataFrame(cert_response["data"])
+                            col_c1, col_c2 = st.columns([1,1])
+                            with col_c1:
+                                if st.button("➕ Add Certification", key=f"add_cert_bulk_{cand['mongo_id']}"):
+                                    resume_data["certifications"].append({"title": "", "issuer": "", "year": "", "link": ""})
+                                    st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
+                                    st.success("Added new certification entry.")
+                                    st.rerun()
+                            with col_c2:
+                                if st.button("🗑️ Delete Checked Certifications", key=f"del_cert_bulk_{cand['mongo_id']}"):
+                                    selected_rows = cert_response['selected_rows']
+                                    if not selected_rows.empty:
+                                        selected_set = set((row['Title'], row['Issuer'], row['Year'], row['link']) for _, row in selected_rows.iterrows())
+                                        resume_data["certifications"] = [
+                                            row for row in resume_data["certifications"]
+                                            if (row.get("title", ""), row.get("issuer", ""), row.get("year", ""), row.get("link", "")) not in selected_set
+                                        ]
+                                        st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
+                                        st.success("Deleted selected certifications.")
+                                        st.rerun()
+                                    else:
+                                        st.error("No rows selected for deletion.")
+                            st.markdown("---")
+
+                            # --- Projects Section ---
+                            st.subheader("💼 Projects")
+                            proj_list = resume_data["projects"]
+                            def normalize_proj(entry):
+                                entry.setdefault("title", "")
+                                entry.setdefault("description", "")
+                                entry.setdefault("link", "")
+                                return entry
+                            proj_list = [normalize_proj(p) for p in proj_list]
+                            proj_list = [
+                                {**proj, 'description': '\n'.join([s.strip() for s in proj.get('description', '').split('.') if s.strip()]) + ('.' if proj.get('description', '').strip().endswith('.') else '')}
+                                if 'description' in proj else proj
+                                for proj in proj_list
+                            ]
+                            if len(proj_list) == 0:
+                                proj_df = pd.DataFrame(columns=["Title", "Description", "link"])
+                            else:
+                                proj_df = pd.DataFrame(proj_list)
+                                proj_df = proj_df.rename(columns={"title": "Title", "description": "Description", "link": "link"})
+                            gb_proj = GridOptionsBuilder.from_dataframe(proj_df)
+                            gb_proj.configure_selection('multiple', use_checkbox=True)
+                            for col in proj_df.columns:
+                                if col == "Description":
+                                    gb_proj.configure_column(col, editable=True, cellStyle={"whiteSpace": "pre-line", "wordBreak": "break-word"}, tooltipField=col, resizable=True, flex=2, minWidth=600)
+                                else:
+                                    gb_proj.configure_column(col, editable=True, cellStyle={"whiteSpace": "normal", "wordBreak": "break-word"}, tooltipField=col, resizable=True, flex=1)
+                            gb_proj.configure_grid_options(rowDragManaged=True, rowHeight=200)
+                            gridOptions_proj = gb_proj.build()
+                            proj_response = AgGrid(
+                                proj_df,
+                                gridOptions=gridOptions_proj,
+                                update_mode=GridUpdateMode.MODEL_CHANGED,
+                                allow_unsafe_jscode=True,
+                                theme="streamlit",
+                                height=400,
+                                fit_columns_on_grid_load=True,
+                                key=f"aggrid_proj_bulk_{cand['mongo_id']}"
+                            )
+                            updated_proj_df = pd.DataFrame(proj_response["data"])
+                            col_p1, col_p2 = st.columns([1,1])
+                            with col_p1:
+                                if st.button("➕ Add Project", key=f"add_proj_bulk_{cand['mongo_id']}"):
                                     resume_data["projects"].append({"title": "", "description": ""})
+                                    st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
+                                    st.success("Added new project entry.")
+                                    st.rerun()
+                            with col_p2:
+                                if st.button("🗑️ Delete Checked Projects", key=f"del_proj_bulk_{cand['mongo_id']}"):
+                                    selected_rows = proj_response['selected_rows']
+                                    if not selected_rows.empty:
+                                        selected_set = set((row['Title'], row['Description'], row['link']) for _, row in selected_rows.iterrows())
+                                        resume_data["projects"] = [
+                                            row for row in resume_data["projects"]
+                                            if (row.get("title", ""), row.get("description", ""), row.get("link", "")) not in selected_set
+                                        ]
+                                        st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
+                                        st.success("Deleted selected projects.")
+                                        st.rerun()
+                                    else:
+                                        st.error("No rows selected for deletion.")
+                            st.markdown("---")
 
-                                st.subheader("Skills")
-                                updated_skills = []
-                                for i, skill in enumerate(resume_data["skills"]):
-                                    skill_col1, skill_col2, skill_col3, skill_col4 = st.columns([4, 1, 1, 1])
-                                    with skill_col1:
-                                        skill_input = st.text_input(f"Skill {i+1}", value=skill, key=f"skill_input_{cand['mongo_id']}_{i}")
-                                        updated_skills.append(skill_input)
-                                    with skill_col2:
-                                        if st.form_submit_button(f"⬆️ Skill {i+1}"):
-                                            if i > 0:
-                                                resume_data["skills"][i - 1], resume_data["skills"][i] = resume_data["skills"][i], resume_data["skills"][i - 1]
-                                    with skill_col3:
-                                        if st.form_submit_button(f"⬇️ Skill {i+1}"):
-                                            if i < len(resume_data["skills"]) - 1:
-                                                resume_data["skills"][i + 1], resume_data["skills"][i] = resume_data["skills"][i], resume_data["skills"][i + 1]
-                                    with skill_col4:
-                                        if st.form_submit_button(f" Delete Skill {i+1}"):
-                                            resume_data["skills"].pop(i)
-                                if st.form_submit_button("➕ Add Skill"):
+                            # --- Skills Section ---
+                            st.subheader("🛠️ Skills")
+                            skill_list = resume_data["skills"]
+                            if len(skill_list) == 0:
+                                skill_df = pd.DataFrame(columns=["Skill"])
+                            else:
+                                skill_df = pd.DataFrame({"Skill": [str(s) if not isinstance(s, str) else s for s in skill_list]})
+                            gb_skill = GridOptionsBuilder.from_dataframe(skill_df)
+                            gb_skill.configure_selection('multiple', use_checkbox=True)
+                            for col in skill_df.columns:
+                                gb_skill.configure_column(col, editable=True, resizable=True, flex=1)
+                            gb_skill.configure_grid_options(rowDragManaged=True, rowHeight=25)
+                            gridOptions_skill = gb_skill.build()
+                            skill_response = AgGrid(
+                                skill_df,
+                                gridOptions=gridOptions_skill,
+                                update_mode=GridUpdateMode.MODEL_CHANGED,
+                                allow_unsafe_jscode=True,
+                                theme="streamlit",
+                                height=300,
+                                fit_columns_on_grid_load=True,
+                                key=f"aggrid_skill_bulk_{cand['mongo_id']}"
+                            )
+                            updated_skill_df = pd.DataFrame(skill_response["data"])
+                            col_s1, col_s2 = st.columns([1,1])
+                            with col_s1:
+                                if st.button("➕ Add Skill", key=f"add_skill_bulk_{cand['mongo_id']}"):
                                     resume_data["skills"].append("")
-                                submit_button = st.form_submit_button("Update and Generate New PDF")
-                            if submit_button:
-                                resume_data["skills"] = [s.strip() for s in updated_skills if s.strip()]
-                                st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
+                                    st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
+                                    st.success("Added new skill entry.")
+                                    st.rerun()
+                            with col_s2:
+                                if st.button("🗑️ Delete Checked Skills", key=f"del_skill_bulk_{cand['mongo_id']}"):
+                                    selected_rows = skill_response['selected_rows']
+                                    if not selected_rows.empty:
+                                        selected_set = set(row['Skill'] for _, row in selected_rows.iterrows())
+                                        resume_data["skills"] = [
+                                            s for s in resume_data["skills"]
+                                            if str(s) not in selected_set
+                                        ]
+                                        st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
+                                        st.success("Deleted selected skills.")
+                                        st.rerun()
+                                    else:
+                                        st.error("No rows selected for deletion.")
+                            st.markdown("---")
+
+                            # Generate PDF button
+                            if st.button("🔄 Update and Generate New PDF", key=f"update_pdf_bulk_{cand['mongo_id']}"):
+                                st.session_state.resume_data = copy.deepcopy(resume_data)
+                                st.session_state['expander_open_single'] = True  # Open expander after PDF generation
+                                st.session_state['summary_generation_complete'] = False  # Reset summary state
+                                st.session_state['summary_generation_requested'] = False
                                 with st.spinner("Generating PDF..."):
-                                    # Always use extracted keywords from session state
                                     keywords = st.session_state.get('extracted_keywords', None)
                                     pdf_file, html_out = PDFUtils.generate_pdf(resume_data, keywords=keywords)
                                     pdf_b64 = PDFUtils.get_base64_pdf(pdf_file)
-                                    st.session_state[f'generated_pdf_{cand["mongo_id"]}'] = pdf_file
-                                    st.session_state[f'generated_pdf_b64_{cand["mongo_id"]}'] = pdf_b64
-                                    st.session_state[f'pdf_ready_{cand["mongo_id"]}'] = True
+                                    st.session_state.generated_pdf = pdf_file
+                                    st.session_state.generated_pdf_b64 = pdf_b64
+                                    st.session_state.pdf_ready_single = True
                                     st.success("PDF generated successfully!")
-# ...existing 
-                        if st.session_state.get(f'pdf_ready_{cand["mongo_id"]}', False):
-                            st.markdown("### 📄 Generated PDF Preview")
-                            pdf_b64 = st.session_state[f'generated_pdf_b64_{cand["mongo_id"]}']
-                            # pdf_display = f'<iframe src="data:application/pdf;base64,{pdf_b64}" width="700" height="900" type="application/pdf"></iframe>'
-                            # st.markdown(pdf_display, unsafe_allow_html=True)
 
-                            # Info message and link to open in new tab
-                            st.info("If the PDF is not viewable above, your browser may not support embedded PDF viewing.")
-                            pdf_filename = f"{st.session_state.resume_data.get('name', 'resume').replace(' ', '_')}.pdf"
-                            link_id = f"open_pdf_link_{uuid.uuid4().hex}"
-
-                            components.html(f"""
-                                <a id="{link_id}" style="margin:10px 0;display:inline-block;padding:8px 16px;font-size:16px;border-radius:5px;background:#0068c9;color:white;text-decoration:none;border:none;cursor:pointer;">
-                                    🔗 Click here to open the PDF in a new tab
-                                </a>
-                                <script>
-                                const b64Data = "{pdf_b64}";
-                                const byteCharacters = atob(b64Data);
-                                const byteNumbers = new Array(byteCharacters.length);
-                                for (let i = 0; i < byteCharacters.length; i++) {{
-                                    byteNumbers[i] = byteCharacters.charCodeAt(i);
-                                }}
-                                const byteArray = new Uint8Array(byteNumbers);
-                                const blob = new Blob([byteArray], {{type: "application/pdf"}});
-                                const blobUrl = URL.createObjectURL(blob);
-                                const link = document.getElementById("{link_id}");
-                                link.href = blobUrl;
-                                link.target = "_blank";
-                                link.rel = "noopener noreferrer";
-                                link.onclick = function() {{
-                                    setTimeout(function(){{URL.revokeObjectURL(blobUrl)}}, 10000);
-                                }};
-                                </script>
-                            """, height=80)
-                            st.download_button(
-                                "📥 Download PDF",
-                                data=st.session_state[f'generated_pdf_{cand["mongo_id"]}'],
-                                file_name=f"{resume_data.get('name', 'resume').replace(' ', '_')}.pdf",
-                                mime="application/pdf",
-                                key=f"pdf_download_{cand['mongo_id']}"
-                            )
-
-                            # --- Download Word Button ---
-                            keywords = st.session_state.get('extracted_keywords', None)
-                            word_file = DocxUtils.generate_docx(resume_data, keywords=keywords)
-                            st.download_button(
-                                "📝 Download Word",
-                                data=word_file,
-                                file_name=f"{resume_data.get('name', 'resume').replace(' ', '_')}.docx",
-                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                key=f"word_download_{cand['mongo_id']}"
-                            )
-
-
-                            # Add generate summary, editable text area, and copy button
-                            st.markdown("### 📝 Candidate Pitch Summary")
-                            if st.button("✨ Generate Summary", key=f"generate_summary_{cand['mongo_id']}", use_container_width=True):
-                                with st.spinner("Generating candidate summary..."):
-                                    summary_prompt = (
-                                        f"You are an expert HR professional. You MUST infer and assign a professional job title for the candidate based on the job description and their experience/skills. Do not leave the title blank. If unsure, use the most relevant title from the job description. Then, write a detailed, information-rich, single-paragraph professional summary (8-10 sentences) to introduce the following candidate to a client for a job opportunity. The summary should be written in third person, using formal and business-appropriate language, and should avoid any informal, overly enthusiastic, or emotional expressions. The summary must be comprehensive and cover the candidate's technical expertise, relevant experience, key achievements, major projects, technologies and frameworks used, leadership, teamwork, impact, and educational background as they pertain to the job description. Be specific about programming languages, frameworks, tools, and platforms the candidate has worked with. Mention any certifications or notable accomplishments. The summary should reflect high ethical standards and professionalism, and should not include any bullet points, excitement, or casual language. Use only facts from the provided information and do not invent or exaggerate. The summary should be suitable for inclusion in a formal client communication and should be at least 8-10 sentences long.\n\nReturn your response as a JSON object with two fields: 'title' and 'summary'.\n\nCandidate Information:\nName: {resume_data.get('name', '')}\nTitle: {resume_data.get('title', '')}\nSummary: {resume_data.get('summary', '')}\nSkills: {', '.join(resume_data.get('skills', []))}\n\nProjects:\n{json.dumps(resume_data.get('projects', []), indent=2)}\n\nEducation:\n{json.dumps(resume_data.get('education', []), indent=2)}\n\nJob Description:\n{job_description}"
+                                # --- After PDF generation for single candidate ---
+                                if st.session_state.get("pdf_ready_single", False):
+                                    st.markdown("### 📄 Generated PDF Preview")
+                                    pdf_b64 = st.session_state.generated_pdf_b64
+                                    st.info("If the PDF is not viewable above, your browser may not support embedded PDF viewing.")
+                                    link_id = f"open_pdf_link_{uuid.uuid4().hex}"
+                                    components.html(f"""
+                                        <a id=\"{link_id}\" style=\"margin:10px 0;display:inline-block;padding:8px 16px;font-size:16px;border-radius:5px;background:#0068c9;color:white;text-decoration:none;border:none;cursor:pointer;\">
+                                            🔗 Click here to open the PDF in a new tab
+                                        </a>
+                                        <script>
+                                        const b64Data = \"{pdf_b64}\";
+                                        const byteCharacters = atob(b64Data);
+                                        const byteNumbers = new Array(byteCharacters.length);
+                                        for (let i = 0; i < byteCharacters.length; i++) {{
+                                            byteNumbers[i] = byteCharacters.charCodeAt(i);
+                                        }}
+                                        const byteArray = new Uint8Array(byteNumbers);
+                                        const blob = new Blob([byteArray], {{type: \"application/pdf\"}});
+                                        const blobUrl = URL.createObjectURL(blob);
+                                        const link = document.getElementById(\"{link_id}\");
+                                        link.href = blobUrl;
+                                        link.target = \"_blank\";
+                                        link.rel = \"noopener noreferrer\";
+                                        link.onclick = function() {{
+                                            setTimeout(function(){{URL.revokeObjectURL(blobUrl)}}, 10000);
+                                        }};
+                                        </script>
+                                    """, height=80)
+                                    st.download_button(
+                                        "📄 Download PDF",
+                                        data=st.session_state.generated_pdf,
+                                        file_name=f"{st.session_state.resume_data.get('name', 'resume').replace(' ', '_')}.pdf",
+                                        mime="application/pdf",
+                                        key=f"download_pdf_bulk_{cand['mongo_id']}"
                                     )
-                                    try:
-                                        client = AzureOpenAI(
-                                            api_key=st.secrets["azure_openai"]["api_key"],
-                                            api_version=st.secrets["azure_openai"]["api_version"],
-                                            azure_endpoint=st.secrets["azure_openai"]["endpoint"]
+                                    keywords = st.session_state.get('extracted_keywords', None)
+                                    word_file = DocxUtils.generate_docx(st.session_state.resume_data, keywords=keywords)
+                                    st.download_button(
+                                        "📝 Download Word",
+                                        data=word_file,
+                                        file_name=f"{st.session_state.resume_data.get('name', 'resume').replace(' ', '_')}.docx",
+                                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                        key=f"download_word_bulk_{cand['mongo_id']}"
+                                    )
+
+                                # Add Pitch Summary Generation
+                            
+                            st.markdown("### 📝 Candidate Pitch Summary")
+                            col1, col2 = st.columns([1, 8])
+                            with col1:
+                                if st.button("✨ Generate Summary", key=f"generate_summary_bulk_{cand['mongo_id']}", use_container_width=True):
+                                    with st.spinner("Generating candidate summary..."):
+                                        summary_prompt = (
+                                            f"You are an expert HR professional. You MUST infer and assign a professional job title for the candidate based on the job description and their experience/skills. Do not leave the title blank. If unsure, use the most relevant title from the job description. Then, write a detailed, information-rich, single-paragraph professional summary (8-10 sentences) to introduce the following candidate to a client for a job opportunity. The summary should be written in third person, using formal and business-appropriate language, and should avoid any informal, overly enthusiastic, or emotional expressions. The summary must be comprehensive and cover the candidate's technical expertise, relevant experience, key achievements, major projects, technologies and frameworks used, leadership, teamwork, impact, and educational background as they pertain to the job description. Be specific about programming languages, frameworks, tools, and platforms the candidate has worked with. Mention any certifications or notable accomplishments. The summary should reflect high ethical standards and professionalism, and should not include any bullet points, excitement, or casual language. Use only facts from the provided information and do not invent or exaggerate. The summary should be suitable for inclusion in a formal client communication and should be at least 8-10 sentences long.\n\nReturn your response as a JSON object with two fields: 'title' and 'summary'.\n\nCandidate Information:\nName: {resume_data.get('name', '')}\nTitle: {resume_data.get('title', '')}\nSummary: {resume_data.get('summary', '')}\nSkills: {', '.join(resume_data.get('skills', []))}\n\nProjects:\n{json.dumps(resume_data.get('projects', []), indent=2)}\n\nEducation:\n{json.dumps(resume_data.get('education', []), indent=2)}\n\nJob Description:\n{job_description}"
                                         )
-                                        response = client.chat.completions.create(
-                                            model=st.secrets["azure_openai"]["deployment"],
-                                            messages=[
-                                                {"role": "system", "content": "You are an expert HR professional who writes compelling candidate summaries."},
-                                                {"role": "user", "content": summary_prompt}
-                                            ],
-                                            temperature=0.7,
-                                            response_format={"type": "json_object"}
-                                        )
-                                        result = response.choices[0].message.content.strip()
                                         try:
-                                            result_json = json.loads(result)
-                                            # Fallback: If title is empty, use the first line of the job description or a default
-                                            title = result_json.get("title", "").strip()
-                                            if not title:
-                                                title = job_description.split("\n")[0].split("-")[0].split(":")[0].split(".")[0].strip()
+                                            client = AzureOpenAI(
+                                                api_key=st.secrets["azure_openai"]["api_key"],
+                                                api_version=st.secrets["azure_openai"]["api_version"],
+                                                azure_endpoint=st.secrets["azure_openai"]["endpoint"]
+                                            )
+                                            response = client.chat.completions.create(
+                                                model=st.secrets["azure_openai"]["deployment"],
+                                                messages=[
+                                                    {"role": "system", "content": "You are an expert HR professional who writes compelling candidate summaries."},
+                                                    {"role": "user", "content": summary_prompt}
+                                                ],
+                                                temperature=0.7,
+                                                response_format={"type": "json_object"}
+                                            )
+                                            result = response.choices[0].message.content.strip()
+                                            try:
+                                                result_json = json.loads(result)
+                                                title = result_json.get("title", "").strip()
                                                 if not title:
-                                                    title = "Candidate"
-                                            resume_data["title"] = title
-                                            st.session_state[f'candidate_summary_{cand["mongo_id"]}'] = result_json.get("summary", "")
+                                                    title = job_description.split("\n")[0].split("-")[0].split(":")[0].split(".")[0].strip()
+                                                    if not title:
+                                                        title = "Candidate"
+                                                resume_data["title"] = title
+                                                st.session_state[f'candidate_summary_bulk_{cand["mongo_id"]}'] = result_json.get("summary", "")
+                                            except Exception as e:
+                                                st.session_state[f'candidate_summary_bulk_{cand["mongo_id"]}'] = result
                                         except Exception as e:
-                                            st.session_state[f'candidate_summary_{cand["mongo_id"]}'] = result
-                                    except Exception as e:
-                                        st.error(f"Error generating summary: {str(e)}")
-                            summary = st.session_state.get(f'candidate_summary_{cand["mongo_id"]}', "")
-                            summary = st.text_area(
-                                "Edit the summary as needed",
-                                value=summary,
-                                height=400,
-                                key=f"summary_edit_{cand['mongo_id']}"
-                            )
-                            # Clean copy button using a hidden textarea inside the HTML component
-                            components.html(f'''
-                                <textarea id="copyText_{cand['mongo_id']}" style="position:absolute;left:-9999px;">{summary}</textarea>
-                                <button style="margin-top:10px;padding:8px 16px;font-size:16px;border-radius:5px;background:#0068c9;color:white;border:none;cursor:pointer;"
-                                    onclick="var copyText = document.getElementById('copyText_{cand['mongo_id']}'); copyText.style.display='block'; copyText.select(); document.execCommand('copy'); copyText.style.display='none'; alert('Copied!');">
-                                    📋 Copy Summary
-                                </button>
-                            ''', height=60)
+                                            st.error(f"Error generating summary: {str(e)}")
+                                        st.rerun()
+                            with col2:
+                                summary = st.session_state.get(f"candidate_summary_bulk_{cand['mongo_id']}", "")
+                                summary = st.text_area(
+                                    "Edit the summary as needed",
+                                    value=summary,
+                                    height=400,
+                                    key=f"summary_edit_bulk_{cand['mongo_id']}"
+                                )
+                                components.html(f'''
+                                    <textarea id="copyText_bulk_{cand['mongo_id']}" style="position:absolute;left:-9999px;">{summary}</textarea>
+                                    <button style="margin-top:10px;padding:8px 16px;font-size:16px;border-radius:5px;background:#0068c9;color:white;border:none;cursor:pointer;"
+                                            nclick="var copyText = document.getElementById('copyText_bulk_{cand['mongo_id']}'); copyText.style.display='block'; copyText.select(); document.execCommand('copy'); copyText.style.display='none'; alert('Copied!');">
+                                        📋 Copy Summary
+                                    </button>
+                                ''', height=60)
+
         elif job_description:
             st.info("👆 Click 'Find Matching Candidates' to start.")
         else:
@@ -749,8 +936,8 @@ elif page == "JD-Resume Regeneration":
         )
 
         if st.button("Find & Retailor for This Candidate", type="primary", key="single_search"):
-            if not search_value or not job_description_single.strip():
-                st.warning("Please enter both candidate info and job description.")
+            if not search_value:
+                st.warning("Please enter both candidate info.")
             else:
                 from db_manager import ResumeDBManager
                 db_manager = ResumeDBManager()
@@ -804,239 +991,358 @@ elif page == "JD-Resume Regeneration":
                         st.session_state.resume_data.setdefault("summary", "")
                         st.session_state.pdf_ready_single = False
 
-        # Editable form and PDF preview for individual candidate
-        if st.session_state.get("resume_data") is not None:
-            with st.form(key="resume_edit_form_single"):
-                resume_data = st.session_state.resume_data
-                resume_data["name"] = st.text_input("Name", value=resume_data.get("name", ""))
-                resume_data["title"] = st.text_input("Title", value=resume_data.get("title", ""))
-                resume_data["summary"] = st.text_area("Summary", value=resume_data.get("summary", ""), height=100)
-                st.subheader("Education")
-                for i, edu in enumerate(resume_data["education"]):
-                    st.markdown(f"**Education {i+1}**")
-                    edu_col1, edu_col2, edu_col3 = st.columns(3)
-                    with edu_col1:
-                        edu["institution"] = st.text_input(f"Institution {i+1}", value=edu.get("institution", ""), key=f"institution_single_{i}")
-                    with edu_col2:
-                        edu["degree"] = st.text_input(f"Degree {i+1}", value=edu.get("degree", ""), key=f"degree_single_{i}")
-                    with edu_col3:
-                        edu["year"] = st.text_input(f"Year {i+1}", value=edu.get("year", ""), key=f"year_single_{i}")
-                    btn_col1, btn_col2, btn_col3 = st.columns([1, 1, 1])
-                    with btn_col1:
-                        if st.form_submit_button(f"⬆️ Edu {i+1}"):
-                            if i > 0:
-                                resume_data["education"][i - 1], resume_data["education"][i] = resume_data["education"][i], resume_data["education"][i - 1]
-                    with btn_col2:
-                        if st.form_submit_button(f"⬇️ Edu {i+1}"):
-                            if i < len(resume_data["education"]) - 1:
-                                resume_data["education"][i + 1], resume_data["education"][i] = resume_data["education"][i], resume_data["education"][i + 1]
-                    with btn_col3:
-                        if st.form_submit_button(f"🗑️ Delete Edu {i+1}"):
-                            resume_data["education"].pop(i)
-                if st.form_submit_button("➕ Add Education"):
-                    resume_data["education"].append({"institution": "", "degree": "", "year": ""})
+        # Only initialize expander_open_single if not present
+        if 'expander_open_single' not in st.session_state:
+            st.session_state['expander_open_single'] = True
+        with st.expander("👤 Candidate Details", expanded=st.session_state['expander_open_single']):
+            resume_data = st.session_state.resume_data
+            if resume_data is not None:
+                # Basic Info Section
+                colA, colB = st.columns([1, 2])
+                with colA:
+                    resume_data["name"] = st.text_input("Name", value=resume_data.get("name", ""))
+                    resume_data["title"] = st.text_input("Title", value=resume_data.get("title", ""))
+                with colB:
+                    resume_data["summary"] = st.text_area("Summary", value=resume_data.get("summary", ""), height=120)
 
-                st.subheader("Certifications")
-                # Ensure certifications is a list
-                if "certifications" not in resume_data:
-                    resume_data["certifications"] = []
-                for i, cert in enumerate(resume_data["certifications"]):
-                    st.markdown(f"**Certification {i+1}**")
-                    # Handle both string and dict formats for certifications
-                    if isinstance(cert, dict):
-                        cert["title"] = st.text_input(f"Certification Title {i+1}", value=cert.get("title", ""), key=f"cert_title_single_{i}")
-                        cert["issuer"] = st.text_input(f"Issuing Organization {i+1}", value=cert.get("issuer", ""), key=f"cert_issuer_single_{i}")
-                        cert["year"] = st.text_input(f"Year {i+1}", value=cert.get("year", ""), key=f"cert_year_single_{i}")
+                st.markdown("---")
+
+                # --- Education Section ---
+                st.subheader("🎓 Education")
+                edu_list = resume_data["education"]
+                def normalize_edu(entry):
+                    entry.setdefault("institution", "")
+                    entry.setdefault("degree", "")
+                    entry.setdefault("year", "")
+                    return entry
+                edu_list = [normalize_edu(e) for e in edu_list]
+                if len(edu_list) == 0:
+                    edu_df = pd.DataFrame(columns=["Degree", "Institution", "Year"])
+                else:
+                    edu_df = pd.DataFrame(edu_list)
+                    edu_df = edu_df.rename(columns={"institution": "Institution", "degree": "Degree", "year": "Year"})
+                gb_edu = GridOptionsBuilder.from_dataframe(edu_df)
+                gb_edu.configure_selection('multiple', use_checkbox=True)
+                for col in edu_df.columns:
+                    gb_edu.configure_column(col, editable=True, cellStyle={"whiteSpace": "normal", "wordBreak": "break-word"}, tooltipField=col, resizable=True, flex=1)
+                gb_edu.configure_grid_options(rowDragManaged=True, rowHeight=100)
+                gridOptions_edu = gb_edu.build()
+                edu_response = AgGrid(
+                    edu_df,
+                    gridOptions=gridOptions_edu,
+                    update_mode=GridUpdateMode.MODEL_CHANGED,
+                    allow_unsafe_jscode=True,
+                    theme="streamlit",
+                    height=300,
+                    fit_columns_on_grid_load=True,
+                    key="aggrid_edu_single"
+                )
+                col_e1, col_e2 = st.columns([1,1])
+                with col_e1:
+                    if st.button("➕ Add Education", key="add_edu_single"):
+                        resume_data["education"].append({"institution": "", "degree": "", "year": ""})
+                        st.session_state.resume_data = copy.deepcopy(resume_data)
+                        st.success("Added new education entry.")
+                        st.rerun()
+                with col_e2:
+                    if st.button("🗑️ Delete Checked Education", key="del_edu_single"):
+                        selected_rows = edu_response['selected_rows']
+                        if not selected_rows.empty:
+                            selected_set = set((row['Institution'], row['Degree'], row['Year']) for _, row in selected_rows.iterrows())
+                            resume_data["education"] = [
+                                row for row in resume_data["education"]
+                                if (row.get("institution", ""), row.get("degree", ""), row.get("year", "")) not in selected_set
+                            ]
+                            st.session_state.resume_data = copy.deepcopy(resume_data)
+                            st.success("Deleted selected education entries.")
+                            st.rerun()
+                        else:
+                            st.error("No rows selected for deletion.")
+                st.markdown("---")
+
+                # --- Certifications Section ---
+                st.subheader("🏅 Certifications")
+                cert_list = resume_data["certifications"]
+                def normalize_cert(entry):
+                    if not isinstance(entry, dict):
+                        entry = {"title": str(entry)}
+                    entry.setdefault("title", "")
+                    entry.setdefault("issuer", "")
+                    entry.setdefault("year", "")
+                    entry.setdefault("link", "")
+                    return entry
+                certs_fixed = [normalize_cert(c) for c in cert_list]
+                if len(certs_fixed) == 0:
+                    cert_df = pd.DataFrame(columns=["Title", "Issuer", "Year", "link"])
+                else:
+                    cert_df = pd.DataFrame(certs_fixed)
+                    cert_df = cert_df.rename(columns={"title": "Title", "issuer": "Issuer", "year": "Year", "link": "link"})
+                gb_cert = GridOptionsBuilder.from_dataframe(cert_df)
+                gb_cert.configure_selection('multiple', use_checkbox=True)
+                for col in cert_df.columns:
+                    gb_cert.configure_column(col, editable=True, cellStyle={"whiteSpace": "normal", "wordBreak": "break-word"}, tooltipField=col, resizable=True, flex=1)
+                gb_cert.configure_grid_options(rowDragManaged=True, rowHeight=100)
+                gridOptions_cert = gb_cert.build()
+                cert_response = AgGrid(
+                    cert_df,
+                    gridOptions=gridOptions_cert,
+                    update_mode=GridUpdateMode.MODEL_CHANGED,
+                    allow_unsafe_jscode=True,
+                    theme="streamlit",
+                    height=300,
+                    fit_columns_on_grid_load=True,
+                    key="aggrid_cert_single"
+                )
+                col_c1, col_c2 = st.columns([1,1])
+                with col_c1:
+                    if st.button("➕ Add Certification", key="add_cert_single"):
+                        resume_data["certifications"].append({"title": "", "issuer": "", "year": "", "link": ""})
+                        st.session_state.resume_data = copy.deepcopy(resume_data)
+                        st.success("Added new certification entry.")
+                        st.rerun()
+                with col_c2:
+                    if st.button("🗑️ Delete Checked Certifications", key="del_cert_single"):
+                        selected_rows = cert_response['selected_rows']
+                        if not selected_rows.empty:
+                            selected_set = set((row['Title'], row['Issuer'], row['Year'], row['link']) for _, row in selected_rows.iterrows())
+                            resume_data["certifications"] = [
+                                row for row in resume_data["certifications"]
+                                if (row.get("title", ""), row.get("issuer", ""), row.get("year", ""), row.get("link", "")) not in selected_set
+                            ]
+                            st.session_state.resume_data = copy.deepcopy(resume_data)
+                            st.success("Deleted selected certifications.")
+                            st.rerun()
+                        else:
+                            st.error("No rows selected for deletion.")
+                st.markdown("---")
+
+                # --- Projects Section ---
+                st.subheader("💼 Projects")
+                proj_list = resume_data["projects"]
+                def normalize_proj(entry):
+                    entry.setdefault("title", "")
+                    entry.setdefault("description", "")
+                    entry.setdefault("link", "")
+                    return entry
+                proj_list = [normalize_proj(p) for p in proj_list]
+                proj_list = [
+                    {**proj, 'description': '\n'.join([s.strip() for s in proj.get('description', '').split('.') if s.strip()]) + ('.' if proj.get('description', '').strip().endswith('.') else '')}
+                    if 'description' in proj else proj
+                    for proj in proj_list
+                ]
+                if len(proj_list) == 0:
+                    proj_df = pd.DataFrame(columns=["Title", "Description", "link"])
+                else:
+                    proj_df = pd.DataFrame(proj_list)
+                    proj_df = proj_df.rename(columns={"title": "Title", "description": "Description", "link": "link"})
+                gb_proj = GridOptionsBuilder.from_dataframe(proj_df)
+                gb_proj.configure_selection('multiple', use_checkbox=True)
+                for col in proj_df.columns:
+                    if col == "Description":
+                        gb_proj.configure_column(col, editable=True, cellStyle={"whiteSpace": "pre-line", "wordBreak": "break-word"}, tooltipField=col, resizable=True, flex=2, minWidth=600)
                     else:
-                        # Convert string to dict format
-                        cert_title = st.text_input(f"Certification Title {i+1}", value=str(cert), key=f"cert_title_single_{i}")
-                        cert_issuer = st.text_input(f"Issuing Organization {i+1}", value="", key=f"cert_issuer_single_{i}")
-                        cert_year = st.text_input(f"Year {i+1}", value="", key=f"cert_year_single_{i}")
-                        resume_data["certifications"][i] = {"title": cert_title, "issuer": cert_issuer, "year": cert_year}
-                    
-                    cert_btn_col1, cert_btn_col2, cert_btn_col3 = st.columns([1, 1, 1])
-                    with cert_btn_col1:
-                        if st.form_submit_button(f"⬆️ Cert {i+1}"):
-                            if i > 0:
-                                resume_data["certifications"][i - 1], resume_data["certifications"][i] = resume_data["certifications"][i], resume_data["certifications"][i - 1]
-                    with cert_btn_col2:
-                        if st.form_submit_button(f"⬇️ Cert {i+1}"):
-                            if i < len(resume_data["certifications"]) - 1:
-                                resume_data["certifications"][i + 1], resume_data["certifications"][i] = resume_data["certifications"][i], resume_data["certifications"][i + 1]
-                    with cert_btn_col3:
-                        if st.form_submit_button(f"🗑️ Delete Cert {i+1}"):
-                            resume_data["certifications"].pop(i)
-                if st.form_submit_button("➕ Add Certification"):
-                    resume_data["certifications"].append({"title": "", "issuer": "", "year": ""})
+                        gb_proj.configure_column(col, editable=True, cellStyle={"whiteSpace": "normal", "wordBreak": "break-word"}, tooltipField=col, resizable=True, flex=1)
+                gb_proj.configure_grid_options(rowDragManaged=True, rowHeight=200)
+                gridOptions_proj = gb_proj.build()
+                proj_response = AgGrid(
+                    proj_df,
+                    gridOptions=gridOptions_proj,
+                    update_mode=GridUpdateMode.MODEL_CHANGED,
+                    allow_unsafe_jscode=True,
+                    theme="streamlit",
+                    height=400,
+                    fit_columns_on_grid_load=True,
+                    key="aggrid_proj_single"
+                )
+                col_p1, col_p2 = st.columns([1,1])
+                with col_p1:
+                    if st.button("➕ Add Project", key="add_proj_single"):
+                        resume_data["projects"].append({"title": "", "description": ""})
+                        st.session_state.resume_data = copy.deepcopy(resume_data)
+                        st.success("Added new project entry.")
+                        st.rerun()
+                with col_p2:
+                    if st.button("🗑️ Delete Checked Projects", key="del_proj_single"):
+                        selected_rows = proj_response['selected_rows']
+                        if not selected_rows.empty:
+                            selected_set = set((row['Title'], row['Description'], row['link']) for _, row in selected_rows.iterrows())
+                            resume_data["projects"] = [
+                                row for row in resume_data["projects"]
+                                if (row.get("title", ""), row.get("description", ""), row.get("link", "")) not in selected_set
+                            ]
+                            st.session_state.resume_data = copy.deepcopy(resume_data)
+                            st.success("Deleted selected projects.")
+                            st.rerun()
+                        else:
+                            st.error("No rows selected for deletion.")
+                st.markdown("---")
 
-                st.subheader("Projects")
-                for i, proj in enumerate(resume_data["projects"]):
-                    st.markdown(f"**Project {i+1}**")
-                    proj["title"] = st.text_input(f"Title {i+1}", value=proj.get("title", ""), key=f"title_single_{i}")
-                    proj["description"] = st.text_area(f"Description {i+1}", value=proj.get("description", ""), key=f"desc_single_{i}", height=300)
-                    proj_btn_col1, proj_btn_col2, proj_btn_col3 = st.columns([1, 1, 1])
-                    with proj_btn_col1:
-                        if st.form_submit_button(f"⬆️ Move Up {i+1}"):
-                            if i > 0:
-                                resume_data["projects"][i - 1], resume_data["projects"][i] = resume_data["projects"][i], resume_data["projects"][i - 1]
-                    with proj_btn_col2:
-                        if st.form_submit_button(f"⬇️ Move Down {i+1}"):
-                            if i < len(resume_data["projects"]) - 1:
-                                resume_data["projects"][i + 1], resume_data["projects"][i] = resume_data["projects"][i], resume_data["projects"][i + 1]
-                    with proj_btn_col3:
-                        if st.form_submit_button(f"🗑️ Delete {i+1}"):
-                            resume_data["projects"].pop(i)
-                if st.form_submit_button("➕ Add Project"):
-                    resume_data["projects"].append({"title": "", "description": ""})
-                st.subheader("Skills")
-                updated_skills = []
-                for i, skill in enumerate(resume_data["skills"]):
-                    skill_col1, skill_col2, skill_col3, skill_col4 = st.columns([4, 1, 1, 1])
-                    with skill_col1:
-                        skill_input = st.text_input(f"Skill {i+1}", value=skill, key=f"skill_input_single_{i}")
-                        updated_skills.append(skill_input)
-                    with skill_col2:
-                        if st.form_submit_button(f"⬆️ Skill {i+1}"):
-                            if i > 0:
-                                resume_data["skills"][i - 1], resume_data["skills"][i] = resume_data["skills"][i], resume_data["skills"][i - 1]
-                    with skill_col3:
-                        if st.form_submit_button(f"⬇️ Skill {i+1}"):
-                            if i < len(resume_data["skills"]) - 1:
-                                resume_data["skills"][i + 1], resume_data["skills"][i] = resume_data["skills"][i], resume_data["skills"][i + 1]
-                    with skill_col4:
-                        if st.form_submit_button(f" Delete Skill {i+1}"):
-                            resume_data["skills"].pop(i)
-                if st.form_submit_button("➕ Add Skill"):
-                    resume_data["skills"].append("")
-                submit_button = st.form_submit_button("Update and Generate New PDF")
-            if submit_button:
-                resume_data["skills"] = [s.strip() for s in updated_skills if s.strip()]
-                st.session_state.resume_data = copy.deepcopy(resume_data)
-                with st.spinner("Generating PDF..."):
-                    # Always use extracted keywords from session state
-                    keywords = st.session_state.get('extracted_keywords', None)
-                    pdf_file, html_out = PDFUtils.generate_pdf(resume_data, keywords=keywords)
-                    pdf_b64 = PDFUtils.get_base64_pdf(pdf_file)
-                    st.session_state.generated_pdf = pdf_file
-                    st.session_state.generated_pdf_b64 = pdf_b64
-                    st.session_state.pdf_ready_single = True
-                    st.success("PDF generated successfully!")
-        # After the form, show the PDF preview and download if available
-        
-        # ...existing code...
-        if st.session_state.get("pdf_ready_single", False):
-            st.markdown("### 📄 Generated PDF Preview")
-            pdf_b64 = st.session_state.generated_pdf_b64
-            # pdf_display = f'<iframe src="data:application/pdf;base64,{pdf_b64}" width="700" height="900" type="application/pdf"></iframe>'
-            # st.markdown(pdf_display, unsafe_allow_html=True)
+                # --- Skills Section ---
+                st.subheader("🛠️ Skills")
+                skill_list = resume_data["skills"]
+                if len(skill_list) == 0:
+                    skill_df = pd.DataFrame(columns=["Skill"])
+                else:
+                    skill_df = pd.DataFrame({"Skill": [str(s) if not isinstance(s, str) else s for s in skill_list]})
+                gb_skill = GridOptionsBuilder.from_dataframe(skill_df)
+                gb_skill.configure_selection('multiple', use_checkbox=True)
+                for col in skill_df.columns:
+                    gb_skill.configure_column(col, editable=True, resizable=True, flex=1)
+                gb_skill.configure_grid_options(rowDragManaged=True, rowHeight=25)
+                gridOptions_skill = gb_skill.build()
+                skill_response = AgGrid(
+                    skill_df,
+                    gridOptions=gridOptions_skill,
+                    update_mode=GridUpdateMode.MODEL_CHANGED,
+                    allow_unsafe_jscode=True,
+                    theme="streamlit",
+                    height=300,
+                    fit_columns_on_grid_load=True,
+                    key="aggrid_skill_single"
+                )
+                col_s1, col_s2 = st.columns([1,1])
+                with col_s1:
+                    if st.button("➕ Add Skill", key="add_skill_single"):
+                        resume_data["skills"].append("")
+                        st.session_state.resume_data = copy.deepcopy(resume_data)
+                        st.success("Added new skill entry.")
+                        st.rerun()
+                with col_s2:
+                    if st.button("🗑️ Delete Checked Skills", key="del_skill_single"):
+                        selected_rows = skill_response['selected_rows']
+                        if not selected_rows.empty:
+                            selected_set = set(row['Skill'] for _, row in selected_rows.iterrows())
+                            resume_data["skills"] = [
+                                s for s in resume_data["skills"]
+                                if str(s) not in selected_set
+                            ]
+                            st.session_state.resume_data = copy.deepcopy(resume_data)
+                            st.success("Deleted selected skills.")
+                            st.rerun()
+                        else:
+                            st.error("No rows selected for deletion.")
+                st.markdown("---")
+                
 
-            # Info message and link to open in new tab
-            st.info("If the PDF is not viewable above, your browser may not support embedded PDF viewing.")
-            link_id = f"open_pdf_link_{uuid.uuid4().hex}"
+                # Generate PDF button
+                if st.button("🔄 Update and Generate New PDF", key="update_pdf_single"):
+                    st.session_state.resume_data = copy.deepcopy(resume_data)
+                    st.session_state['expander_open_single'] = True  # Open expander after PDF generation
+                    st.session_state['summary_generation_complete'] = False  # Reset summary state
+                    st.session_state['summary_generation_requested'] = False
+                    with st.spinner("Generating PDF..."):
+                        keywords = st.session_state.get('extracted_keywords', None)
+                        pdf_file, html_out = PDFUtils.generate_pdf(resume_data, keywords=keywords)
+                        pdf_b64 = PDFUtils.get_base64_pdf(pdf_file)
+                        st.session_state.generated_pdf = pdf_file
+                        st.session_state.generated_pdf_b64 = pdf_b64
+                        st.session_state.pdf_ready_single = True
+                        st.success("PDF generated successfully!")
 
-            components.html(f"""
-                <a id="{link_id}" style="margin:10px 0;display:inline-block;padding:8px 16px;font-size:16px;border-radius:5px;background:#0068c9;color:white;text-decoration:none;border:none;cursor:pointer;">
-                    🔗 Click here to open the PDF in a new tab
-                </a>
-                <script>
-                const b64Data = "{pdf_b64}";
-                const byteCharacters = atob(b64Data);
-                const byteNumbers = new Array(byteCharacters.length);
-                for (let i = 0; i < byteCharacters.length; i++) {{
-                    byteNumbers[i] = byteCharacters.charCodeAt(i);
-                }}
-                const byteArray = new Uint8Array(byteNumbers);
-                const blob = new Blob([byteArray], {{type: "application/pdf"}});
-                const blobUrl = URL.createObjectURL(blob);
-                const link = document.getElementById("{link_id}");
-                link.href = blobUrl;
-                link.target = "_blank";
-                link.rel = "noopener noreferrer";
-                link.onclick = function() {{
-                    setTimeout(function(){{URL.revokeObjectURL(blobUrl)}}, 10000);
-                }};
-                </script>
-            """, height=80)
-            
+                    # --- After PDF generation for single candidate ---
+                    if st.session_state.get("pdf_ready_single", False):
+                        st.markdown("### 📄 Generated PDF Preview")
+                        pdf_b64 = st.session_state.generated_pdf_b64
+                        st.info("If the PDF is not viewable above, your browser may not support embedded PDF viewing.")
+                        link_id = f"open_pdf_link_{uuid.uuid4().hex}"
+                        components.html(f"""
+                            <a id=\"{link_id}\" style=\"margin:10px 0;display:inline-block;padding:8px 16px;font-size:16px;border-radius:5px;background:#0068c9;color:white;text-decoration:none;border:none;cursor:pointer;\">
+                                🔗 Click here to open the PDF in a new tab
+                            </a>
+                            <script>
+                            const b64Data = \"{pdf_b64}\";
+                            const byteCharacters = atob(b64Data);
+                            const byteNumbers = new Array(byteCharacters.length);
+                            for (let i = 0; i < byteCharacters.length; i++) {{
+                                byteNumbers[i] = byteCharacters.charCodeAt(i);
+                            }}
+                            const byteArray = new Uint8Array(byteNumbers);
+                            const blob = new Blob([byteArray], {{type: \"application/pdf\"}});
+                            const blobUrl = URL.createObjectURL(blob);
+                            const link = document.getElementById(\"{link_id}\");
+                            link.href = blobUrl;
+                            link.target = \"_blank\";
+                            link.rel = \"noopener noreferrer\";
+                            link.onclick = function() {{
+                                setTimeout(function(){{URL.revokeObjectURL(blobUrl)}}, 10000);
+                            }};
+                            </script>
+                        """, height=80)
+                        st.download_button(
+                            "📄 Download PDF",
+                            data=st.session_state.generated_pdf,
+                            file_name=f"{st.session_state.resume_data.get('name', 'resume').replace(' ', '_')}.pdf",
+                            mime="application/pdf",
+                            key="pdf_download_single"
+                        )
+                        keywords = st.session_state.get('extracted_keywords', None)
+                        word_file = DocxUtils.generate_docx(st.session_state.resume_data, keywords=keywords)
+                        st.download_button(
+                            "📝 Download Word",
+                            data=word_file,
+                            file_name=f"{st.session_state.resume_data.get('name', 'resume').replace(' ', '_')}.docx",
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                            key="word_download_single"
+                        )
 
-            st.download_button(
-                "📄 Download PDF",
-                data=st.session_state.generated_pdf,
-                file_name=f"{st.session_state.resume_data.get('name', 'resume').replace(' ', '_')}.pdf",
-                mime="application/pdf",
-                key="pdf_download_single"
-            )
-
-            # --- Download Word Button ---
-            keywords = st.session_state.get('extracted_keywords', None)
-            word_file = DocxUtils.generate_docx(st.session_state.resume_data, keywords=keywords)
-            st.download_button(
-                "📝 Download Word",
-                data=word_file,
-                file_name=f"{st.session_state.resume_data.get('name', 'resume').replace(' ', '_')}.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                key="word_download_single"
-            )
-
-            st.markdown("### 📝 Candidate Pitch Summary")
-            if st.button("✨ Generate Summary", key="generate_summary_single", use_container_width=True):
-                with st.spinner("Generating candidate summary..."):
-                    summary_prompt = (
-                        f"You are an expert HR professional. You MUST infer and assign a professional job title for the candidate based on the job description and their experience/skills. Do not leave the title blank. If unsure, use the most relevant title from the job description. Then, write a detailed, information-rich, single-paragraph professional summary (8-10 sentences) to introduce the following candidate to a client for a job opportunity. The summary should be written in third person, using formal and business-appropriate language, and should avoid any informal, overly enthusiastic, or emotional expressions. The summary must be comprehensive and cover the candidate's technical expertise, relevant experience, key achievements, major projects, technologies and frameworks used, leadership, teamwork, impact, and educational background as they pertain to the job description. Be specific about programming languages, frameworks, tools, and platforms the candidate has worked with. Mention any certifications or notable accomplishments. The summary should reflect high ethical standards and professionalism, and should not include any bullet points, excitement, or casual language. Use only facts from the provided information and do not invent or exaggerate. The summary should be suitable for inclusion in a formal client communication and should be at least 8-10 sentences long.\n\nReturn your response as a JSON object with two fields: 'title' and 'summary'.\n\nCandidate Information:\nName: {st.session_state.resume_data.get('name', '')}\nTitle: {st.session_state.resume_data.get('title', '')}\nSummary: {st.session_state.resume_data.get('summary', '')}\nSkills: {', '.join(st.session_state.resume_data.get('skills', []))}\n\nProjects:\n{json.dumps(st.session_state.resume_data.get('projects', []), indent=2)}\n\nEducation:\n{json.dumps(st.session_state.resume_data.get('education', []), indent=2)}\n\nJob Description:\n{job_description_single}"
+                        # Candidate Pitch Summary only after PDF is generated
+                        
+                st.markdown("### 📝 Candidate Pitch Summary")
+                col1, col2 = st.columns([1, 8])
+                with col1:
+                    if st.button("✨ Generate Summary", key="generate_summary_single", use_container_width=True):
+                        st.session_state['expander_open_single'] = True  # Keep expander open after summary generation
+                        with st.spinner("Generating candidate summary..."):
+                            summary_prompt = (
+                                    f"You are an expert HR professional. You MUST infer and assign a professional job title for the candidate based on the job description and their experience/skills. Do not leave the title blank. If unsure, use the most relevant title from the job description. Then, write a detailed, information-rich, single-paragraph professional summary (8-10 sentences) to introduce the following candidate to a client for a job opportunity. The summary should be written in third person, using formal and business-appropriate language, and should avoid any informal, overly enthusiastic, or emotional expressions. The summary must be comprehensive and cover the candidate's technical expertise, relevant experience, key achievements, major projects, technologies and frameworks used, leadership, teamwork, impact, and educational background as they pertain to the job description. Be specific about programming languages, frameworks, tools, and platforms the candidate has worked with. Mention any certifications or notable accomplishments. The summary should reflect high ethical standards and professionalism, and should not include any bullet points, excitement, or casual language. Use only facts from the provided information and do not invent or exaggerate. The summary should be suitable for inclusion in a formal client communication and should be at least 8-10 sentences long.\n\nReturn your response as a JSON object with two fields: 'title' and 'summary'.\n\nCandidate Information:\nName: {st.session_state.resume_data.get('name', '')}\nTitle: {st.session_state.resume_data.get('title', '')}\nSummary: {st.session_state.resume_data.get('summary', '')}\nSkills: {', '.join(st.session_state.resume_data.get('skills', []))}\n\nProjects:\n{json.dumps(st.session_state.resume_data.get('projects', []), indent=2)}\n\nEducation:\n{json.dumps(st.session_state.resume_data.get('education', []), indent=2)}\n\nJob Description:\n{job_description_single}"
+                            )
+                            try:
+                                client = AzureOpenAI(
+                                    api_key=st.secrets["azure_openai"]["api_key"],
+                                    api_version=st.secrets["azure_openai"]["api_version"],
+                                    azure_endpoint=st.secrets["azure_openai"]["endpoint"]
+                                )
+                                response = client.chat.completions.create(
+                                    model=st.secrets["azure_openai"]["deployment"],
+                                    messages=[
+                                        {"role": "system", "content": "You are an expert HR professional who writes compelling candidate summaries."},
+                                        {"role": "user", "content": summary_prompt}
+                                    ],
+                                    temperature=0.7,
+                                    response_format={"type": "json_object"}
+                                )
+                                result = response.choices[0].message.content.strip()
+                                try:
+                                    result_json = json.loads(result)
+                                    title = result_json.get("title", "").strip()
+                                    if not title:
+                                        title = job_description_single.split("\n")[0].split("-")[0].split(":")[0].split(".")[0].strip()
+                                        if not title:
+                                            title = "Candidate"
+                                    st.session_state.resume_data["title"] = title
+                                    st.session_state.candidate_summary_single = result_json.get("summary", "")
+                                except Exception as e:
+                                    st.session_state.candidate_summary_single = result
+                            except Exception as e:
+                                st.error(f"Error generating summary: {str(e)}")
+                with col2:
+                    summary = st.session_state.get("candidate_summary_single", "")
+                    summary = st.text_area(
+                        "Edit the summary as needed",
+                        value=summary,
+                        height=400,
+                        key="summary_edit_single"
                     )
-                    try:
-                        client = AzureOpenAI(
-                            api_key=st.secrets["azure_openai"]["api_key"],
-                            api_version=st.secrets["azure_openai"]["api_version"],
-                            azure_endpoint=st.secrets["azure_openai"]["endpoint"]
-                        )
-                        response = client.chat.completions.create(
-                            model=st.secrets["azure_openai"]["deployment"],
-                            messages=[
-                                {"role": "system", "content": "You are an expert HR professional who writes compelling candidate summaries."},
-                                {"role": "user", "content": summary_prompt}
-                            ],
-                            temperature=0.7,
-                            response_format={"type": "json_object"}
-                        )
-                        result = response.choices[0].message.content.strip()
-                        try:
-                            result_json = json.loads(result)
-                            # Fallback: If title is empty, use the first line of the job description or a default
-                            title = result_json.get("title", "").strip()
-                            if not title:
-                                title = job_description_single.split("\n")[0].split("-")[0].split(":")[0].split(".")[0].strip()
-                                if not title:
-                                    title = "Candidate"
-                            st.session_state.resume_data["title"] = title
-                            st.session_state.candidate_summary_single = result_json.get("summary", "")
-                        except Exception as e:
-                            st.session_state.candidate_summary_single = result
-                    except Exception as e:
-                        st.error(f"Error generating summary: {str(e)}")
-            summary = st.session_state.get("candidate_summary_single", "")
-            summary = st.text_area(
-                "Edit the summary as needed",
-                value=summary,
-                height=400,
-                key="summary_edit_single"
-            )
-            # Clean copy button using a hidden textarea inside the HTML component
-            components.html(f'''
-                <textarea id="copyText_single" style="position:absolute;left:-9999px;">{summary}</textarea>
-                <button style="margin-top:10px;padding:8px 16px;font-size:16px;border-radius:5px;background:#0068c9;color:white;border:none;cursor:pointer;"
-                    onclick="var copyText = document.getElementById('copyText_single'); copyText.style.display='block'; copyText.select(); document.execCommand('copy'); copyText.style.display='none'; alert('Copied!');">
-                    📋 Copy Summary
-                </button>
-            ''', height=60)
+                    components.html(f'''
+                        <textarea id="copyText_single" style="position:absolute;left:-9999px;">{summary}</textarea>
+                        <button style="margin-top:10px;padding:8px 16px;font-size:16px;border-radius:5px;background:#0068c9;color:white;border:none;cursor:pointer;"
+                            onclick="var copyText = document.getElementById('copyText_single'); copyText.style.display='block'; copyText.select(); document.execCommand('copy'); copyText.style.display='none'; alert('Copied!');">
+                            📋 Copy Summary
+                        </button>
+                    ''', height=60)
+            else:
+                st.info("No candidate selected or retailored yet. Please search and retailor a candidate to edit details.")
 
-# -------------------
-# Page: Upload & Process Resumes
-# -------------------
-# -------------------
-# Page: Database Management
-# -------------------
-# -------------------
 
 elif page == "Database Management":
     st.title("💾 Resume Database Management")
@@ -1527,7 +1833,7 @@ elif page == "Database Management":
 
         except Exception as e:
             st.error(f"Error connecting to database: {e}")
-
+            
 def job_matcher_page():
     st.title("JD-Resume Regeneration")
     
@@ -1625,4 +1931,4 @@ def job_matcher_page():
                 
                 # Show full resume button
                 if st.button("📄 View Full Resume", key=f"view_{candidate['mongo_id']}"):
-                    st.json(candidate['resume'])
+                    st.json(candidate['resume'])    
