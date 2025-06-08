@@ -93,7 +93,6 @@ st.sidebar.title("HR Assistance Bot")
 page = st.sidebar.selectbox("Navigate", [
     "Resume Search Engine",
     "JD-Resume Regeneration",
-    "Upload & Process", 
     "Database Management", 
 ], index=0)  # Set index=0 to make Resume Search Engine the default
 
@@ -1833,7 +1832,7 @@ elif page == "Database Management":
 
         except Exception as e:
             st.error(f"Error connecting to database: {e}")
-            
+
 def job_matcher_page():
     st.title("JD-Resume Regeneration")
     
