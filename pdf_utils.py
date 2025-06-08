@@ -18,7 +18,7 @@ class PDFUtils:
         return base64.b64encode(pdf_file.read()).decode("utf-8")
 
     @staticmethod
-    def analyze_space_usage(data, max_space_per_page=32):
+    def analyze_space_usage(data, max_space_per_page=25):
         """
         Analyze space usage for projects without generating the full PDF.
         Returns detailed information about how space will be distributed.
@@ -325,7 +325,7 @@ class PDFUtils:
 
         # Estimate how many items fit in the left and right columns per page
         LEFT_COL_MAX = 28  # Total items per page in left column
-        RIGHT_COL_MAX = 4  # projects per page
+
 
         font_size = 13  # Default font size for all pages
 
@@ -391,10 +391,10 @@ class PDFUtils:
                 # Count bullet points in description
                 bullets = project['description'].split('\n')
                 bullets = [b.strip() for b in bullets if b.strip()]
-                size += int(len(bullets) * 0.6)
+                size += int(len(bullets) * 0.5)
             return size
         
-        def analyze_project_space_usage(projects, max_space_per_page=32):
+        def analyze_project_space_usage(projects, max_space_per_page=25):
             """Analyze and report detailed space usage for projects"""
             print(f"\n=== DETAILED PROJECT SPACE ANALYSIS ===")
             print(f"Max space per page: {max_space_per_page}")
@@ -422,40 +422,45 @@ class PDFUtils:
             
             return total_estimated_space, estimated_pages
         
-        def distribute_projects_to_pages(projects, max_space_per_page):
-            """Distribute projects across pages, splitting long project descriptions if needed. Fill each page up to max_space_per_page, splitting project descriptions if needed, and only show the title on the first part. Track project numbering so only blocks with a title increment the project number."""
+        def distribute_projects_to_pages(projects, max_space_per_page_first, max_space_per_page_rest):
             if not projects:
-                return [[]], [max_space_per_page - 2], [[]]
+                return [[]], [max_space_per_page_first - 2], [[]]
 
             pages = []
             current_page = []
             current_page_size = 0
             space_remaining_per_page = []
-            usable_space_per_page = max_space_per_page - 2
             project_numbers_per_page = []
             current_page_numbers = []
             project_counter = 0
+            page_idx = 0
 
-            for i, project in enumerate(projects):
-                # Estimate size for title + description lines
+            i = 0
+            while i < len(projects):
+                project = projects[i]
                 desc_lines = [l.strip() for l in project.get('description', '').split('\n') if l.strip()]
-                total_lines = 1 + len(desc_lines)  # 1 for title
                 idx = 0
-                while idx < len(desc_lines):
+                first_chunk = True
+                while idx < len(desc_lines) or (idx == 0 and len(desc_lines) == 0):
+                    # Choose max space for this page
+                    max_space_per_page = max_space_per_page_first if page_idx == 0 else max_space_per_page_rest
+                    usable_space_per_page = max_space_per_page - 2
                     remaining_space = usable_space_per_page - current_page_size
-                    # If this is the first chunk for this project, include title
-                    lines_for_this_page = remaining_space - 1 if current_page_size == 0 else remaining_space
-                    if lines_for_this_page <= 0:
-                        # No space left, start new page
-                        space_remaining_per_page.append(usable_space_per_page - current_page_size)
-                        pages.append(current_page)
-                        project_numbers_per_page.append(current_page_numbers)
-                        current_page = []
-                        current_page_numbers = []
-                        current_page_size = 0
-                        continue
-                    # If this is the first chunk, show title and increment project number
-                    if idx == 0:
+                    if first_chunk:
+                        lines_for_this_page = max(remaining_space - 1, 0)
+                        if lines_for_this_page <= 0:
+                            if current_page:
+                                space_remaining_per_page.append(usable_space_per_page - current_page_size)
+                                pages.append(current_page)
+                                project_numbers_per_page.append(current_page_numbers)
+                                page_idx += 1
+                            current_page = []
+                            current_page_numbers = []
+                            current_page_size = 0
+                            max_space_per_page = max_space_per_page_first if page_idx == 0 else max_space_per_page_rest
+                            usable_space_per_page = max_space_per_page - 2
+                            remaining_space = usable_space_per_page
+                            lines_for_this_page = max(remaining_space - 1, 0)
                         chunk_lines = desc_lines[idx:idx+lines_for_this_page]
                         split_proj = dict(project)
                         split_proj['description'] = '\n'.join(chunk_lines)
@@ -464,9 +469,25 @@ class PDFUtils:
                         current_page_numbers.append(project_counter)
                         current_page_size += 1 + len(chunk_lines)
                         idx += len(chunk_lines)
+                        first_chunk = False
+                        if len(chunk_lines) == 0:
+                            break
                     else:
-                        # Continuation: no title, no number
-                        chunk_lines = desc_lines[idx:idx+remaining_space]
+                        lines_for_this_page = remaining_space
+                        if lines_for_this_page <= 0:
+                            if current_page:
+                                space_remaining_per_page.append(usable_space_per_page - current_page_size)
+                                pages.append(current_page)
+                                project_numbers_per_page.append(current_page_numbers)
+                                page_idx += 1
+                            current_page = []
+                            current_page_numbers = []
+                            current_page_size = 0
+                            max_space_per_page = max_space_per_page_first if page_idx == 0 else max_space_per_page_rest
+                            usable_space_per_page = max_space_per_page - 2
+                            remaining_space = usable_space_per_page
+                            lines_for_this_page = remaining_space
+                        chunk_lines = desc_lines[idx:idx+lines_for_this_page]
                         split_proj = dict(project)
                         split_proj['description'] = '\n'.join(chunk_lines)
                         split_proj['title'] = ''
@@ -476,21 +497,24 @@ class PDFUtils:
                         current_page_numbers.append(None)
                         current_page_size += len(chunk_lines)
                         idx += len(chunk_lines)
-                    # If page is full, start new page
+                    if idx >= len(desc_lines):
+                        break
                     if current_page_size >= usable_space_per_page:
                         space_remaining_per_page.append(usable_space_per_page - current_page_size)
                         pages.append(current_page)
                         project_numbers_per_page.append(current_page_numbers)
+                        page_idx += 1
                         current_page = []
                         current_page_numbers = []
                         current_page_size = 0
-                # If project fits entirely and page is not full, just add it
                 if len(desc_lines) == 0:
-                    # Project with no description
+                    max_space_per_page = max_space_per_page_first if page_idx == 0 else max_space_per_page_rest
+                    usable_space_per_page = max_space_per_page - 2
                     if current_page_size + 1 > usable_space_per_page:
                         space_remaining_per_page.append(usable_space_per_page - current_page_size)
                         pages.append(current_page)
                         project_numbers_per_page.append(current_page_numbers)
+                        page_idx += 1
                         current_page = []
                         current_page_numbers = []
                         current_page_size = 0
@@ -500,24 +524,26 @@ class PDFUtils:
                     project_counter += 1
                     current_page_numbers.append(project_counter)
                     current_page_size += 1
-            # Add the last page if it has content
+                i += 1
             if current_page:
+                max_space_per_page = max_space_per_page_first if page_idx == 0 else max_space_per_page_rest
+                usable_space_per_page = max_space_per_page - 2
                 space_remaining_per_page.append(usable_space_per_page - current_page_size)
                 pages.append(current_page)
                 project_numbers_per_page.append(current_page_numbers)
             if not pages:
+                max_space_per_page = max_space_per_page_first
+                usable_space_per_page = max_space_per_page - 2
                 pages = [[]]
-                space_remaining_per_page = [usable_space_per_page]
+                space_remaining = [usable_space_per_page]
                 project_numbers_per_page = [[]]
             return pages, space_remaining_per_page, project_numbers_per_page
-        
+
         projects = data_copy.get('projects', [])
-        
-        # First analyze the space usage
-        total_estimated_space, estimated_pages = analyze_project_space_usage(projects, max_space_per_page=20)
-        
-        # Then distribute projects to pages
-        right_chunks, space_remaining, project_numbers_per_page = distribute_projects_to_pages(projects, max_space_per_page=20)
+        # Use different max space for first and subsequent pages
+        max_space_per_page_first = 25
+        max_space_per_page_rest = 28
+        right_chunks, space_remaining, project_numbers_per_page = distribute_projects_to_pages(projects, max_space_per_page_first, max_space_per_page_rest)
 
         # --- Fix: Pad project_numbers_per_page and space_remaining to match right_chunks ---
         while len(project_numbers_per_page) < len(right_chunks):

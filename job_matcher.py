@@ -451,11 +451,7 @@ Instructions:
                     project["description"] = self.expand_project_description(project, job_keywords)
                     time.sleep(1)
                 retailored_resume["projects"] = filtered_projects
-            
-            # Validate the structure
-            if not self._validate_resume_structure(safe_resume, retailored_resume):
-                st.error("Error: Retailored resume structure doesn't match original")
-                return safe_resume
+    
             return retailored_resume
         except Exception as e:
             st.error(f"Error retailoring resume: {str(e)}")
