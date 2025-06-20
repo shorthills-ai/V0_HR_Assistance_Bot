@@ -13,7 +13,7 @@ class ResumeDBManager:
     def insert_or_update_resume(self, resume: dict):
         """Upsert a resume based on name, email, or employee_id.
 
-        If a resume with the same employee_id exists, it will be replaced.
+        If a resume with the same employee_id exists, it will be updated.
         Otherwise, fallback to name and email, or just name/email.
         """
         query = {}
@@ -28,23 +28,37 @@ class ResumeDBManager:
         elif resume.get("email"):
             query = {"email": resume.get("email")}
 
-        # If we have a valid query, try to upsert
+        # If we have a valid query, try to find existing document
         if query:
-            if "_id" not in resume:
-                resume["_id"] = str(uuid.uuid4())
-            result = self.collection.replace_one(query, resume, upsert=True)
-            if result.matched_count:
-                print(
-                    f"✅ Updated existing resume for {resume.get('name', 'Unknown')} "
-                    f"({resume.get('email', 'No email')}) | Employee ID: {resume.get('employee_id', 'N/A')}"
-                )
-                return resume.get("_id")
+            existing_doc = self.collection.find_one(query)
+            
+            if existing_doc:
+                # Document exists - update it
+                # Remove _id from resume data to avoid conflicts
+                resume_update = {k: v for k, v in resume.items() if k != "_id"}
+                result = self.collection.update_one(query, {"$set": resume_update})
+                
+                if result.modified_count > 0:
+                    print(
+                        f"✅ Updated existing resume for {resume.get('name', 'Unknown')} "
+                        f"({resume.get('email', 'No email')}) | Employee ID: {resume.get('employee_id', 'N/A')}"
+                    )
+                else:
+                    print(
+                        f"ℹ️ No changes needed for {resume.get('name', 'Unknown')} "
+                        f"({resume.get('email', 'No email')}) | Employee ID: {resume.get('employee_id', 'N/A')}"
+                    )
+                return existing_doc["_id"]
             else:
+                # Document doesn't exist - insert new one
+                if "_id" not in resume:
+                    resume["_id"] = str(uuid.uuid4())
+                result = self.collection.insert_one(resume)
                 print(
                     f"✅ Inserted new resume for {resume.get('name', 'Unknown')} "
                     f"({resume.get('email', 'No email')}) | Employee ID: {resume.get('employee_id', 'N/A')}"
                 )
-                return resume.get("_id")
+                return result.inserted_id
         else:
             # If we don't have a valid query, just insert with a new ID
             if "_id" not in resume:

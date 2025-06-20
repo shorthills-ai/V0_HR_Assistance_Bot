@@ -184,26 +184,20 @@ class PDFUtils:
                 # Escape special regex characters
                 escaped_keyword = re.escape(keyword)
                 
-                # Create multiple patterns to catch different cases
+                # Use ONLY word boundary patterns to ensure complete words only
                 patterns = [
-                    # Exact match with word boundaries (case insensitive)
+                    # Exact match with word boundaries (case insensitive) - main pattern
                     r'(?i)(?<!<strong>)\b(' + escaped_keyword + r')\b(?![^<]*</strong>)',
-                    # Match within parentheses like "(DRDO)"
-                    r'(?i)(?<!<strong>)\(([^)]*' + escaped_keyword + r'[^)]*)\)(?![^<]*</strong>)',
-                    # Match acronyms and abbreviations
-                    r'(?i)(?<!<strong>)(' + escaped_keyword + r')(?![^<]*</strong>)'
+                    # Match within parentheses with word boundaries like "(RAG)" but not "(leveraged)"
+                    r'(?i)(?<!<strong>)\(\s*(' + escaped_keyword + r')\s*\)(?![^<]*</strong>)',
+                    # Match as standalone word at start/end of text or surrounded by non-alphanumeric
+                    r'(?i)(?<!<strong>)(?<![a-zA-Z0-9])(' + escaped_keyword + r')(?![a-zA-Z0-9])(?![^<]*</strong>)'
                 ]
                 
                 for pattern in patterns:
                     if re.search(pattern, text):
-                        print(f"DEBUG: Found keyword '{keyword}' in text: {text[:50]}...")
                         text = re.sub(pattern, r'<strong>\1</strong>', text)
                         break
-            
-            # Debug output if text changed
-            if text != original_text:
-                print(f"DEBUG: Text transformed from: {original_text}")
-                print(f"DEBUG: Text transformed to: {text}")
             
             return text
 
@@ -219,11 +213,9 @@ class PDFUtils:
         else:
             keywords_to_use = set()
 
-        # Debug: Print keywords being used (remove in production)
-        print(f"DEBUG: Keywords being used for bolding: {keywords_to_use}")
-        print(f"DEBUG: Type of keywords: {type(keywords_to_use)}")
+        # Process keyword bolding with complete word matching only
 
-        # Bold keywords in certifications - ENHANCED with better debugging
+        # Bold keywords in certifications (complete word matching only)
         if 'certifications' in data_copy and isinstance(data_copy['certifications'], list):
             print(f"DEBUG: Processing {len(data_copy['certifications'])} certifications")
             for i, cert in enumerate(data_copy['certifications']):
@@ -265,8 +257,7 @@ class PDFUtils:
                     else:
                         print(f"DEBUG: No keywords found in string certification: {cert}")
 
-        # Debug: Print keywords being used (remove in production)
-        print(f"DEBUG: Keywords being used for bolding: {keywords_to_use}")
+        # Continue with other sections
 
         # Bold keywords in summary
         if 'summary' in data_copy and data_copy['summary']:
@@ -284,25 +275,24 @@ class PDFUtils:
                     if original_skill != data_copy['skills'][i]:
                         print(f"DEBUG: Skill bolded - '{original_skill}' -> '{data_copy['skills'][i]}'")
 
-        # Bold keywords in projects
+        # Bold keywords in projects - FIXED ORDER: Convert to bullets FIRST, then bold keywords
         if 'projects' in data_copy and isinstance(data_copy['projects'], list):
             for project in data_copy['projects']:
-                # Bold project title
+                # Do NOT bold project titles - keep them clean
                 if 'title' in project and project['title']:
-                    original_title = project['title']
-                    project['title'] = bold_keywords(project['title'], keywords_to_use)
-                    if original_title != project['title']:
-                        print(f"DEBUG: Project title bolded - '{original_title}' -> '{project['title']}'")
+                    print(f"DEBUG: Project title kept unbold - '{project['title']}'")
                 
-                # Bold project description
+                # Project description: First convert to bullets, THEN bold keywords
                 if 'description' in project and project['description']:
-                    # First convert to bullets
+                    # Step 1: Convert paragraph to bullets (split on periods)
                     desc = paragraph_to_bullets(project['description'])
-                    # Then bold keywords
+                    # Step 2: Bold keywords in the bullet-formatted text
                     original_desc = desc
                     project['description'] = bold_keywords(desc, keywords_to_use)
                     if original_desc != project['description']:
                         print(f"DEBUG: Project description bolded")
+                    else:
+                        print(f"DEBUG: Project description converted to bullets, no keywords found to bold")
 
         # Bold keywords in education
         if 'education' in data_copy and isinstance(data_copy['education'], list):
@@ -324,7 +314,7 @@ class PDFUtils:
         continuation_template = env.get_template('templates/template_continuation.html')
 
         # Estimate how many items fit in the left and right columns per page
-        LEFT_COL_MAX = 28  # Total items per page in left column
+        LEFT_COL_MAX = 32  # Total items per page in left column
 
 
         font_size = 13  # Default font size for all pages
@@ -391,7 +381,7 @@ class PDFUtils:
                 # Count bullet points in description
                 bullets = project['description'].split('\n')
                 bullets = [b.strip() for b in bullets if b.strip()]
-                size += int(len(bullets) * 0.5)
+                size += int(len(bullets) * 0.3)
             return size
         
         def analyze_project_space_usage(projects, max_space_per_page=25):
@@ -423,125 +413,142 @@ class PDFUtils:
             return total_estimated_space, estimated_pages
         
         def distribute_projects_to_pages(projects, max_space_per_page_first, max_space_per_page_rest):
+            """
+            Distribute projects to pages allowing natural breaks in bullet points.
+            Maintains consistent project spacing and alignment across all pages.
+            Only ensures project titles don't orphan (title + at least 1 bullet together).
+            """
             if not projects:
                 return [[]], [max_space_per_page_first - 2], [[]]
 
             pages = []
-            current_page = []
-            current_page_size = 0
             space_remaining_per_page = []
             project_numbers_per_page = []
+            current_page = []
             current_page_numbers = []
-            project_counter = 0
+            current_page_size = 2  # Fixed header space for "Key Responsibilities:" on each page
             page_idx = 0
+            project_counter = 1
 
-            i = 0
-            while i < len(projects):
-                project = projects[i]
+            print(f"\n=== PROJECT DISTRIBUTION TO PAGES (FIXED ALIGNMENT) ===")
+            print(f"Total projects to distribute: {len(projects)}")
+            
+            for i, project in enumerate(projects):
+                # Get description lines
                 desc_lines = [l.strip() for l in project.get('description', '').split('\n') if l.strip()]
-                idx = 0
-                first_chunk = True
-                while idx < len(desc_lines) or (idx == 0 and len(desc_lines) == 0):
-                    # Choose max space for this page
+                
+                # Determine max space for current page (consistent spacing)
+                max_space_per_page = max_space_per_page_first if page_idx == 0 else max_space_per_page_rest
+                usable_space_per_page = max_space_per_page - 2  # Reserve 2 lines for consistent header/footer space
+                
+                print(f"Project {i+1}: '{project.get('title', 'Untitled')[:40]}...'")
+                print(f"  - Description lines: {len(desc_lines)}")
+                print(f"  - Current page {page_idx + 1} usage: {current_page_size}/{usable_space_per_page}")
+                
+                # Project title takes 2 lines (title + spacing)
+                title_space = 2
+                
+                # Check if we can fit at least the title + 1 bullet point
+                min_project_space = title_space + (1 if desc_lines else 0)
+                
+                if current_page_size + min_project_space > usable_space_per_page:
+                    # Start new page - ensure consistent spacing
+                    if current_page:
+                        pages.append(current_page)
+                        space_remaining_per_page.append(usable_space_per_page - current_page_size)
+                        project_numbers_per_page.append(current_page_numbers)
+                        print(f"  - Page {page_idx + 1} completed, space used: {current_page_size}/{usable_space_per_page}")
+                        page_idx += 1
+                    
+                    # Reset for new page with consistent spacing
+                    current_page = []
+                    current_page_numbers = []
+                    current_page_size = 2  # Fixed header space
                     max_space_per_page = max_space_per_page_first if page_idx == 0 else max_space_per_page_rest
                     usable_space_per_page = max_space_per_page - 2
-                    remaining_space = usable_space_per_page - current_page_size
-                    if first_chunk:
-                        lines_for_this_page = max(remaining_space - 1, 0)
-                        if lines_for_this_page <= 0:
-                            if current_page:
-                                space_remaining_per_page.append(usable_space_per_page - current_page_size)
-                                pages.append(current_page)
-                                project_numbers_per_page.append(current_page_numbers)
-                                page_idx += 1
-                            current_page = []
-                            current_page_numbers = []
-                            current_page_size = 0
-                            max_space_per_page = max_space_per_page_first if page_idx == 0 else max_space_per_page_rest
-                            usable_space_per_page = max_space_per_page - 2
-                            remaining_space = usable_space_per_page
-                            lines_for_this_page = max(remaining_space - 1, 0)
-                        chunk_lines = desc_lines[idx:idx+lines_for_this_page]
-                        split_proj = dict(project)
-                        split_proj['description'] = '\n'.join(chunk_lines)
-                        current_page.append(split_proj)
-                        project_counter += 1
-                        current_page_numbers.append(project_counter)
-                        current_page_size += 1 + len(chunk_lines)
-                        idx += len(chunk_lines)
-                        first_chunk = False
-                        if len(chunk_lines) == 0:
-                            break
-                    else:
-                        lines_for_this_page = remaining_space
-                        if lines_for_this_page <= 0:
-                            if current_page:
-                                space_remaining_per_page.append(usable_space_per_page - current_page_size)
-                                pages.append(current_page)
-                                project_numbers_per_page.append(current_page_numbers)
-                                page_idx += 1
-                            current_page = []
-                            current_page_numbers = []
-                            current_page_size = 0
-                            max_space_per_page = max_space_per_page_first if page_idx == 0 else max_space_per_page_rest
-                            usable_space_per_page = max_space_per_page - 2
-                            remaining_space = usable_space_per_page
-                            lines_for_this_page = remaining_space
-                        chunk_lines = desc_lines[idx:idx+lines_for_this_page]
-                        split_proj = dict(project)
-                        split_proj['description'] = '\n'.join(chunk_lines)
-                        split_proj['title'] = ''
-                        if 'number' in split_proj:
-                            del split_proj['number']
-                        current_page.append(split_proj)
-                        current_page_numbers.append(None)
-                        current_page_size += len(chunk_lines)
-                        idx += len(chunk_lines)
-                    if idx >= len(desc_lines):
-                        break
-                    if current_page_size >= usable_space_per_page:
-                        space_remaining_per_page.append(usable_space_per_page - current_page_size)
-                        pages.append(current_page)
-                        project_numbers_per_page.append(current_page_numbers)
-                        page_idx += 1
-                        current_page = []
-                        current_page_numbers = []
-                        current_page_size = 0
-                if len(desc_lines) == 0:
-                    max_space_per_page = max_space_per_page_first if page_idx == 0 else max_space_per_page_rest
+                
+                # Calculate how many description lines fit on current page
+                available_space = usable_space_per_page - current_page_size - title_space
+                lines_that_fit = min(len(desc_lines), available_space)
+                
+                # Create project chunk for this page
+                project_chunk = {
+                    'title': project.get('title', ''),
+                    'description': '\n'.join(desc_lines[:lines_that_fit]) if lines_that_fit > 0 else '',
+                    'link': project.get('link', ''),
+                    'is_continuation': False
+                }
+                
+                current_page.append(project_chunk)
+                current_page_numbers.append(project_counter)
+                current_page_size += title_space + lines_that_fit
+                
+                print(f"  - Added to page {page_idx + 1}: title + {lines_that_fit} lines, usage: {current_page_size}/{usable_space_per_page}")
+                
+                # Handle remaining description lines on subsequent pages
+                remaining_lines = desc_lines[lines_that_fit:]
+                while remaining_lines:
+                    # Start new page for continuation
+                    pages.append(current_page)
+                    space_remaining_per_page.append(usable_space_per_page - current_page_size)
+                    project_numbers_per_page.append(current_page_numbers)
+                    print(f"  - Page {page_idx + 1} completed, continuing project on next page")
+                    page_idx += 1
+                    
+                    # Reset for new page
+                    current_page = []
+                    current_page_numbers = []
+                    current_page_size = 2  # Fixed header space
+                    max_space_per_page = max_space_per_page_rest  # Continuation pages
                     usable_space_per_page = max_space_per_page - 2
-                    if current_page_size + 1 > usable_space_per_page:
-                        space_remaining_per_page.append(usable_space_per_page - current_page_size)
-                        pages.append(current_page)
-                        project_numbers_per_page.append(current_page_numbers)
-                        page_idx += 1
-                        current_page = []
-                        current_page_numbers = []
-                        current_page_size = 0
-                    split_proj = dict(project)
-                    split_proj['description'] = ''
-                    current_page.append(split_proj)
-                    project_counter += 1
-                    current_page_numbers.append(project_counter)
-                    current_page_size += 1
-                i += 1
+                    
+                    # Add continuation lines
+                    lines_that_fit = min(len(remaining_lines), usable_space_per_page - 2)
+                    
+                    continuation_chunk = {
+                        'title': '',  # No title for continuation
+                        'description': '\n'.join(remaining_lines[:lines_that_fit]),
+                        'link': '',
+                        'is_continuation': True
+                    }
+                    
+                    current_page.append(continuation_chunk)
+                    current_page_numbers.append(None)  # No number for continuation
+                    current_page_size += lines_that_fit
+                    
+                    remaining_lines = remaining_lines[lines_that_fit:]
+                    print(f"  - Continuation: {lines_that_fit} lines on page {page_idx + 1}")
+                
+                project_counter += 1
+            
+            # Add the last page if it has content
             if current_page:
+                pages.append(current_page)
                 max_space_per_page = max_space_per_page_first if page_idx == 0 else max_space_per_page_rest
                 usable_space_per_page = max_space_per_page - 2
                 space_remaining_per_page.append(usable_space_per_page - current_page_size)
-                pages.append(current_page)
                 project_numbers_per_page.append(current_page_numbers)
+                print(f"  - Final page {page_idx + 1} completed")
+            
+            # Ensure we have at least one page
             if not pages:
-                max_space_per_page = max_space_per_page_first
-                usable_space_per_page = max_space_per_page - 2
                 pages = [[]]
-                space_remaining = [usable_space_per_page]
+                space_remaining_per_page = [max_space_per_page_first - 2]
                 project_numbers_per_page = [[]]
+            
+            print(f"Total pages created: {len(pages)}")
+            for i, (page, remaining) in enumerate(zip(pages, space_remaining_per_page)):
+                actual_max = max_space_per_page_first if i == 0 else max_space_per_page_rest
+                usable = actual_max - 2
+                used = usable - remaining
+                print(f"  Page {i+1}: {len(page)} project chunks, {used}/{usable} space used, {remaining} remaining")
+            print(f"==================================================\n")
+            
             return pages, space_remaining_per_page, project_numbers_per_page
 
         projects = data_copy.get('projects', [])
         # Use different max space for first and subsequent pages
-        max_space_per_page_first = 25
+        max_space_per_page_first = 27
         max_space_per_page_rest = 28
         right_chunks, space_remaining, project_numbers_per_page = distribute_projects_to_pages(projects, max_space_per_page_first, max_space_per_page_rest)
 
@@ -551,12 +558,14 @@ class PDFUtils:
         while len(space_remaining) < len(right_chunks):
             space_remaining.append(15)
 
-        # Print space utilization summary
+        # Print space utilization summary with correct calculations
         print(f"\n=== PROJECT SPACE UTILIZATION SUMMARY ===")
         for i, (chunk, remaining) in enumerate(zip(right_chunks, space_remaining)):
-            used_space = 12 - remaining  # max_space_per_page - remaining
-            utilization_percent = (used_space / 12) * 100
-            print(f"Page {i+1}: {len(chunk)} projects, {used_space}/12 space used ({utilization_percent:.1f}%), {remaining} space remaining")
+            actual_max_space = max_space_per_page_first if i == 0 else max_space_per_page_rest
+            usable_space = actual_max_space - 2  # Reserve 2 lines for consistent spacing
+            used_space = usable_space - remaining
+            utilization_percent = (used_space / usable_space) * 100 if usable_space > 0 else 0
+            print(f"Page {i+1}: {len(chunk)} project chunks, {used_space}/{usable_space} space used ({utilization_percent:.1f}%), {remaining} space remaining")
         print(f"==========================================\n")
 
         # Ensure we have at least one page for each column
