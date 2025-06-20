@@ -38,11 +38,11 @@ class PDFUtils:
         """
         def estimate_project_size(project):
             """Estimate how much space a project will take"""
-            size = 1  # Base size for project title
+            size = 0.8  # Base size for project title
             if project.get('description'):
                 bullets = project['description'].split('\n')
                 bullets = [b.strip() for b in bullets if b.strip()]
-                size += int(len(bullets) * 0.8)
+                size += int(len(bullets) * 0.7)
             return size
         
         projects = data.get('projects', [])
@@ -324,7 +324,7 @@ class PDFUtils:
         continuation_template = env.get_template('templates/template_continuation.html')
 
         # Estimate how many items fit in the left and right columns per page
-        LEFT_COL_MAX = 28  # Total items per page in left column
+        LEFT_COL_MAX = 35  # Total items per page in left column
 
 
         font_size = 13  # Default font size for all pages
@@ -341,31 +341,39 @@ class PDFUtils:
             return current_size + section_size <= max_size
 
         def distribute_sections_to_pages(left_column_data, max_items_per_page):
-            """Distribute sections across pages, keeping each section intact"""
-            sections = ['skills', 'education', 'certifications']
+            """Distribute sections across pages, allowing sections to be split if needed"""
             pages = []
             current_page = {'skills': [], 'education': [], 'certifications': []}
             current_page_size = 0
             
-            for section_name in sections:
+            # Process sections in order, allowing them to split across pages
+            for section_name in ['skills', 'education', 'certifications']:
                 section_data = left_column_data.get(section_name, [])
                 if not section_data:
                     continue
+                
+                # Add section title space (1 unit) if this is the first item of this section type on current page
+                if not current_page[section_name]:
+                    if current_page_size + 1 > max_items_per_page:
+                        # Start new page if section title won't fit
+                        if any(current_page.values()):
+                            pages.append(current_page)
+                        current_page = {'skills': [], 'education': [], 'certifications': []}
+                        current_page_size = 0
+                    current_page_size += 1  # Account for section title
+                
+                # Add items from this section one by one
+                for item in section_data:
+                    if current_page_size + 1 > max_items_per_page:
+                        # Start new page
+                        if any(current_page.values()):
+                            pages.append(current_page)
+                        current_page = {'skills': [], 'education': [], 'certifications': []}
+                        current_page_size = 1  # Account for section title on new page
                     
-                section_size = estimate_section_size(section_data)
-                
-                # If this section can't fit on current page, start a new page
-                if not can_fit_section(current_page_size, section_size, max_items_per_page):
-                    # Save current page if it has content
-                    if any(current_page.values()):
-                        pages.append(current_page)
-                    # Start new page
-                    current_page = {'skills': [], 'education': [], 'certifications': []}
-                    current_page_size = 0
-                
-                # Add entire section to current page
-                current_page[section_name] = section_data
-                current_page_size += section_size
+                    # Add item to current page
+                    current_page[section_name].append(item)
+                    current_page_size += 1
             
             # Add the last page if it has content
             if any(current_page.values()):
@@ -383,6 +391,17 @@ class PDFUtils:
         # Distribute sections across pages
         left_pages = distribute_sections_to_pages(left_column, LEFT_COL_MAX)
         
+        # Debug: Print section distribution
+        print(f"\n=== LEFT COLUMN SECTION DISTRIBUTION ===")
+        print(f"Total pages for left column: {len(left_pages)}")
+        for i, page in enumerate(left_pages):
+            skills_count = len(page['skills'])
+            edu_count = len(page['education'])
+            cert_count = len(page['certifications'])
+            total_items = skills_count + edu_count + cert_count
+            print(f"Page {i+1}: Skills={skills_count}, Education={edu_count}, Certifications={cert_count}, Total={total_items}")
+        print(f"==========================================\n")
+        
         # Handle right column (projects) - content-aware pagination
         def estimate_project_size(project):
             """Estimate how much space a project will take"""
@@ -391,7 +410,7 @@ class PDFUtils:
                 # Count bullet points in description
                 bullets = project['description'].split('\n')
                 bullets = [b.strip() for b in bullets if b.strip()]
-                size += int(len(bullets) * 0.5)
+                size += int(len(bullets) * 0.3)
             return size
         
         def analyze_project_space_usage(projects, max_space_per_page=25):
@@ -595,6 +614,16 @@ class PDFUtils:
             'certifications': len(first_left_page['certifications']) > 0,
             'education': len(first_left_page['education']) > 0
         }
+        
+        # Track which sections appeared on each page to show proper headings
+        all_sections_per_page = []
+        for page in left_pages:
+            page_sections = {
+                'skills': len(page['skills']) > 0,
+                'certifications': len(page['certifications']) > 0,
+                'education': len(page['education']) > 0
+            }
+            all_sections_per_page.append(page_sections)
 
         # Render continuation pages
         project_index_offset = len(right_chunks[0])
@@ -608,10 +637,26 @@ class PDFUtils:
             if page_idx < len(left_pages):
                 left_col = left_pages[page_idx]
                 # Determine which section headings to show
-                # Show heading only if the entire section moved to this page (not on first page)
                 for section in ['skills', 'certifications', 'education']:
-                    if left_col[section] and not first_page_sections[section]:
-                        section_headings[section] = True
+                    if left_col[section]:
+                        # Show heading ONLY if this section did NOT appear on ANY previous page
+                        # Do NOT show heading if section is continuing from a previous page
+                        section_appeared_before = False
+                        
+                        # Check if section appeared on first page
+                        if first_page_sections[section]:
+                            section_appeared_before = True
+                        
+                        # Check if section appeared on any continuation page before this one
+                        if not section_appeared_before:
+                            for prev_page_idx in range(1, page_idx):
+                                if prev_page_idx < len(all_sections_per_page) and all_sections_per_page[prev_page_idx][section]:
+                                    section_appeared_before = True
+                                    break
+                        
+                        # Show heading only if section is starting fresh (never appeared before)
+                        if not section_appeared_before:
+                            section_headings[section] = True
             
             # Get right column content for this page
             right_col = []

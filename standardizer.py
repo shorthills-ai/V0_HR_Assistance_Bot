@@ -4,6 +4,7 @@ from pathlib import Path
 import httpx
 import asyncio
 import streamlit as st  # Added for secrets access
+import re
 
 class ResumeStandardizer:
     def __init__(self):
@@ -21,19 +22,43 @@ class ResumeStandardizer:
         self.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         self.RAW_LOG_DIR.mkdir(parents=True, exist_ok=True)
 
+    def preprocess_content(self, content: str) -> str:
+        """Clean up OCR artifacts and page markers that might cause content shifting."""
+        if not content:
+            return content
+        
+        # Remove page markers like "--- Page X Content ---" or "--- Page X of filename ---"
+        content = re.sub(r'---\s*Page\s+\d+.*?---\s*', '', content, flags=re.IGNORECASE)
+        
+        # Remove standalone page numbers or headers that might be OCR artifacts
+        content = re.sub(r'^\s*Page\s+\d+\s*$', '', content, flags=re.MULTILINE | re.IGNORECASE)
+        
+        # Remove excessive whitespace and normalize line breaks
+        content = re.sub(r'\n\s*\n\s*\n+', '\n\n', content)
+        content = re.sub(r'^\s+', '', content, flags=re.MULTILINE)
+        
+        # Remove common OCR artifacts
+        content = re.sub(r'\s*\[?\s*Image\s+File:\s*[^\]]*\]\s*', '', content, flags=re.IGNORECASE)
+        
+        return content.strip()
+
     def make_standardizer_prompt(self, content: str, links: list) -> str:
-        return self._prompt_template(content, links)
+        # Preprocess content to remove page markers and artifacts
+        cleaned_content = self.preprocess_content(content)
+        return self._prompt_template(cleaned_content, links)
     
     def _prompt_template(self, content, links):
         return f"""
 You are an intelligent and robust context-aware resume standardizer. Your task is to convert resume content into a clean, structured, normalized/standardized JSON format suitable for both semantic retrieval and relational database storage.
 
 --- PARSED RESUME CONTENT ---
-The content has been parsed using *LlamaParse*, so please note:
+The content has been parsed using *OCR* and may contain artifacts from multi-page PDF processing:
 - It is formatted in markdown-style text.
 - Section names like Education, Experience, Projects, Skills, etc., are likely to be marked by headings or bullet points.
 - The resume templates can vary significantly. For example, "Professional Experience", "Work History", or "Employment" may all refer to the same section. We need you for Normalizing such variants into the defined structure mentioned below.
-- Some artifacts or repetition may occur due to Llama Parse not being able to understand the text is embedded link.
+- Some artifacts or repetition may occur due to OCR processing of different pages.
+- **IMPORTANT**: Focus on the actual resume content and ignore any page headers, footers, or page numbering artifacts.
+- If content appears fragmented or split across what were originally different pages, consolidate related information logically.
 
 --- EXTRACTED HYPERLINKS ---
 The hyperlinks have been extracted using *Fitz*. Please note:
@@ -100,10 +125,12 @@ Convert the resume to a JSON object strictly following this structure:
 - Strictly follow the above structure. Do not introduce or remove fields arbitrarily.
 - Do not change the structure based on data availability. Keep all keys present, with empty arrays if needed.
 - Avoid assumptions. Only use data present in the parsed content or reliably inferred via links.
+- **Content Consolidation**: If related information appears to be split or fragmented (due to original page breaks), intelligently combine and organize it.
+- **Ignore Artifacts**: Disregard page numbers, headers, footers, and other page-related artifacts that aren't part of the actual resume content.
 - Ensure all meaningful content is preserved — even if duplicated or malformed in parsing.
 - Output only a valid JSON object. Do not wrap in markdown or include any extra commentary.
 
-The quality of your standardization directly impacts downstream processing. Ensure robustness and consistency in formatting across all resumes.
+The quality of your standardization directly impacts downstream processing. Ensure robustness and consistency in formatting across all resumes, especially when dealing with content that may have been affected by page extraction issues.
 """
 
     def clean_llm_response(self, text: str) -> str:

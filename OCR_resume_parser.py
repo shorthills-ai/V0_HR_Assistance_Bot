@@ -28,14 +28,50 @@ class ResumeParserwithOCR:
             return []
 
     def extract_text_from_pdf(self, pdf_path):
-        """Extract text from PDF using OCR."""
+        """Extract text from PDF using OCR, with improved handling of cover pages and minimal content pages."""
         try:
             images = convert_from_path(pdf_path, dpi=300)
-            text = ""
+            page_texts = []
+            
+            # Extract text from each page and analyze content
             for i, image in enumerate(images):
-                text += f"\n\n--- Page {i+1} of {os.path.basename(pdf_path)} ---\n\n"
-                text += pytesseract.image_to_string(image)
-            return text.strip()
+                page_text = pytesseract.image_to_string(image).strip()
+                
+                # Count meaningful content (words with more than 2 characters)
+                meaningful_words = [word for word in page_text.split() if len(word.strip()) > 2]
+                word_count = len(meaningful_words)
+                
+                page_info = {
+                    'page_num': i + 1,
+                    'text': page_text,
+                    'word_count': word_count,
+                    'is_meaningful': word_count > 10  # Pages with more than 10 meaningful words
+                }
+                page_texts.append(page_info)
+                
+                print(f"📄 Page {i+1}: {word_count} meaningful words, {'✓ meaningful' if page_info['is_meaningful'] else '✗ minimal content'}")
+            
+            # Filter and combine meaningful pages
+            meaningful_pages = [page for page in page_texts if page['is_meaningful']]
+            
+            if not meaningful_pages:
+                # If no meaningful pages found, use all pages (fallback)
+                print("⚠️ No meaningful pages detected, using all pages")
+                meaningful_pages = page_texts
+            else:
+                print(f"✅ Using {len(meaningful_pages)} out of {len(page_texts)} pages with meaningful content")
+            
+            # Combine text from meaningful pages
+            combined_text = ""
+            for page in meaningful_pages:
+                if combined_text:  # Add separator between pages
+                    combined_text += f"\n\n--- Page {page['page_num']} Content ---\n\n"
+                else:
+                    # For the first meaningful page, don't add page marker to avoid confusion
+                    combined_text += ""
+                combined_text += page['text']
+            
+            return combined_text.strip()
         except Exception as e:
             print(f"❌ Failed to extract text from PDF {pdf_path.name} with OCR: {e}")
             return ""

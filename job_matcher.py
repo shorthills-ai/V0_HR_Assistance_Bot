@@ -1,5 +1,6 @@
 import json
 import re
+import random
 from typing import List, Dict, Set, Tuple
 from pymongo import MongoClient
 import streamlit as st
@@ -201,37 +202,50 @@ class ResumeRetailor:
         )
     
     def expand_project_description(self, project: Dict, job_keywords: Set[str]) -> str:
-        """Expand a project description based on its title and minimal description."""
-        # Only use the main system and user prompt for every project, no fallback or legacy prompt logic
+        """Expand a project description based on its title and minimal description, aligning with JD."""
         system_prompt = """
-You are a professional technical resume writer. Your task is to convert raw project data into a concise, impactful, and metric-driven project description suitable for a resume.
+You are a professional technical resume writer. Your task is to convert raw project data into a concise, impactful, and metric-driven project description suitable for a resume, specifically tailored to match the job description.
 
 Follow these rules:
 
-1. Output 4 to 7 bullet points, each 1–2 lines long maximum. Dont write extra, be to the point and concise.
+1. Output 4 to 7 bullet points, each 1–2 lines long maximum. Don't write extra, be to the point and concise.
 2. The first line compulsorily has to be a professionally retailored title of the project, do this for every project and make sure it has only first letter of each word capitalised.
-    -> If its a work experience,make sure not to include company name in the title and give a generic title to the specific project.
-3. Each bullet must start with a strong past-tense action verb (Engineered, Built, Automated, Designed, Achieved, etc.).
-4. The bullet points should 
+    -> If its a work experience, make sure not to include company name in the title and give a generic title to the specific project.
+3. Each bullet point must start with a strong past-tense action verb (Engineered, Built, Automated, Designed, Achieved, etc.).
+4. The bullet points should:
  -> summarize what you built, what technologies you used, and why it mattered — no fluff, no LLM mentions unless critical.
  -> describe any UX, responsiveness, optimization, version control, or frontend/backend implementation details.
  -> include specific results using clear metrics — e.g., "93% coverage," "reduced latency by 40%," "automated 80% of manual work."
  -> explain the business or user impact — how it helped the client, user, or team.
 5. Keep each bullet short and crisp — aim for clarity, not verbosity.
-6. Use plain text only — no markdown, no bullet symbols.
-7. IMPORTANT: Make sure to highlight and emphasize any skills, technologies, or experiences that match the provided job keywords.
-8. If the project uses any of the job keywords, make sure to explicitly mention them in the description.
+6. Use plain text without bullet symbols - no special symbols, bullets, or arrows.
+7. IMPORTANT: Align the project description with the job keywords provided. Emphasize technologies, skills, and experiences that match the job requirements.
+8. If the project uses any of the job keywords, make sure to explicitly mention them and show how they were applied effectively.
 
-You must NOT generate a paragraph — return 4 to 7 standalone resume-ready bullets.
+You must NOT generate a paragraph — return the project title on the first line, followed by 4 to 7 achievement lines without any bullet symbols.
+
+Example format:
+Enhanced E-Commerce Platform
+Engineered responsive web application using React, Node.js, and MongoDB, serving 10,000+ daily users
+Implemented payment gateway integration with Stripe API, increasing conversion rates by 25%
+Optimized database queries and API responses, reducing page load time by 40%
+Built automated testing suite with Jest and Cypress, achieving 95% code coverage
 """
 
         user_prompt = f"""
 Project Title: {project['title']}
 Raw Description: {project['description']}
 Technologies: {', '.join(project.get('technologies', []))}
-Job Keywords to Highlight: {', '.join(job_keywords)}
+Job Keywords to Align With: {', '.join(job_keywords)}
 
-Using the system instructions, create 4 to 7 clear, action-driven bullet points that summarize the project. Make sure to emphasize any matches with the job keywords in the description.
+Using the system instructions, create a professional project title followed by 4 to 7 clear, action-driven achievement lines (without bullet symbols) that summarize the project and align it with the job requirements.
+
+Required format:
+[Professional Project Title]
+[Action verb] [description with technologies and impact]
+[Action verb] [description with metrics/results]
+[Action verb] [description highlighting job keyword alignment]
+[Additional achievement lines as needed]
 """
 
         try:
@@ -347,27 +361,61 @@ Please provide a more appropriate title. Otherwise, return the same title."""
             st.error(f"Error generating job title: {str(e)}")
             return candidate.get('title', '')  # Return original title if there's an error
 
-    def extract_relevant_projects(self, resume: Dict, job_keywords: Set[str]) -> list:
-        """Extract relevant projects from both 'projects' and 'experience' sections based on job keywords."""
-        keywords_lower = {k.lower() for k in job_keywords}
-        relevant_projects = []
-        # Check original projects
+    def extract_all_projects(self, resume: Dict) -> list:
+        """Extract ALL projects from both 'projects' and 'experience' sections."""
+        all_projects = []
+        
+        # Process original projects
         for proj in resume.get('projects', []):
-            desc = proj.get('description', '').lower()
-            techs = [t.lower() for t in proj.get('technologies', [])] if 'technologies' in proj else []
-            if any(k in desc for k in keywords_lower) or any(k in techs for k in keywords_lower):
-                relevant_projects.append(proj)
-        # Check experience descriptions
+            all_projects.append(proj)
+        
+        # Process experience descriptions and extract as projects
         for exp in resume.get('experience', []):
-            exp_desc = exp.get('description', '').lower()
-            if any(k in exp_desc for k in keywords_lower):
-                # Create a project-like dict from experience
-                relevant_projects.append({
-                    'title': exp.get('title', 'Relevant Experience Project'),
-                    'description': exp.get('description', ''),
-                    'technologies': exp.get('technologies', []) if 'technologies' in exp else []
-                })
-        return relevant_projects
+            # Create a project-like dict from experience
+            exp_project = {
+                'title': exp.get('title', exp.get('position', 'Professional Experience')),
+                'description': exp.get('description', ''),
+                'technologies': exp.get('technologies', []) if 'technologies' in exp else [],
+                'company': exp.get('company', ''),
+                'duration': exp.get('duration', ''),
+                'source': 'experience'  # Mark source for reference
+            }
+            all_projects.append(exp_project)
+        
+        return all_projects
+
+    def score_project_relevance(self, enhanced_description: str, job_keywords: Set[str]) -> float:
+        """Score a project based on how well its enhanced description aligns with job keywords."""
+        description_lower = enhanced_description.lower()
+        keywords_lower = {k.lower() for k in job_keywords}
+        
+        # Count keyword matches
+        matches = sum(1 for keyword in keywords_lower if keyword in description_lower)
+        
+        # Calculate score (0-1 scale)
+        if len(keywords_lower) == 0:
+            return 0.5  # Neutral score if no keywords
+        
+        # Base score from keyword matches
+        keyword_score = matches / len(keywords_lower)
+        
+        # Bonus for multiple occurrences and context
+        bonus = 0
+        for keyword in keywords_lower:
+            occurrences = description_lower.count(keyword)
+            if occurrences > 1:
+                bonus += 0.1 * (occurrences - 1)
+        
+        # Bonus for technical depth indicators
+        technical_indicators = ['implemented', 'engineered', 'optimized', 'automated', 'designed', 'built', 'developed']
+        technical_score = sum(0.05 for indicator in technical_indicators if indicator in description_lower)
+        
+        # Bonus for metrics/impact indicators
+        impact_indicators = ['%', 'increased', 'reduced', 'improved', 'achieved', 'users', 'performance']
+        impact_score = sum(0.05 for indicator in impact_indicators if indicator in description_lower)
+        
+        total_score = min(1.0, keyword_score + bonus + technical_score + impact_score)
+        return total_score
 
     def retailor_resume(self, original_resume: Dict, job_keywords: Set[str], job_description: str = "") -> Dict:
         """Retailor the resume to keep all original skills unchanged and only modify projects based on job relevance."""
@@ -377,22 +425,23 @@ Please provide a more appropriate title. Otherwise, return the same title."""
         if job_description:
             safe_resume["title"] = self.generate_job_specific_title(safe_resume, job_keywords, job_description)
         
-        # Use helper to get all relevant projects (from both projects and experience)
-        relevant_projects = self.extract_relevant_projects(safe_resume, job_keywords)
+        # Extract ALL projects from both projects and experience sections
+        all_projects = self.extract_all_projects(safe_resume)
         
         # --- Retailor the resume (keeping all skills, only modifying projects) ---
         system_prompt = """
 You are an AI assistant that retailors resumes to match a job description.
 Your ONLY task is to:
-- KEEP ALL ORIGINAL SKILLS UNCHANGED - Do NOT filter or remove any skills from the candidate's original skill set
-- Filter the projects section to include ONLY those projects that directly match or relate to the provided job keywords
+- KEEP ORIGINAL SKILLS BUT PRIORITIZE THEM - The skills list will be post-processed to prioritize job-relevant skills and limit to 22 maximum. You should keep the original skills as provided.
+- INCLUDE ALL PROJECTS - Both job-relevant and non-relevant projects from 'projects' and 'experience' sections will be included and enhanced post-processing. You should keep the original projects as provided.
+- KEEP CERTIFICATIONS UNCHANGED - Copy the entire 'certifications' section exactly as provided in the original resume. Do NOT modify, add, remove, or change any certification details.
 - Rewrite the 'summary' field to be a concise, job-specific summary that highlights the candidate's fit for the job, using only information from the resume and the job keywords
 - Add or update a 'title' field in the resume JSON, inferring a proper, professional job title for the candidate based on the job description and their experience/skills. The title should be a realistic job title (e.g., 'Frontend Developer', 'Data Scientist', 'Project Manager'), not just a single keyword or technology. Do not leave the title blank. If unsure, use the most relevant job title from the job description.
-- In addition to the 'projects' section, also review the 'experience' section. If any work experience description contains relevant projects or achievements that match the job keywords, extract those as additional projects or ensure they are included in the retailored resume's projects section.
+- Extract projects from BOTH 'projects' and 'experience' sections - work experience descriptions containing projects or achievements should be converted to project format and included in the projects section.
 - Do NOT add, invent, or hallucinate any new skills, projects, or summary content.
-- Do NOT change or add any other fields except 'title', 'projects', and 'summary'. KEEP 'skills' exactly as provided in the original resume.
-- The output must be the same JSON structure as the input, but with projects, summary, and title updated as above.
-- If no projects match, leave the projects section empty.
+- Do NOT change or add any other fields except 'title', 'projects', and 'summary'. KEEP 'skills' and 'certifications' exactly as provided in the original resume (post-processing will handle skills prioritization and limiting to 22 skills).
+- The output must be the same JSON structure as the input, but with projects (from both sources), summary, and title updated as above.
+- Include ALL projects - post-processing will handle prioritization and enhancement based on job relevance.
 - Do not change the order or content of any other fields.
 """
         user_prompt = f"""
@@ -403,11 +452,12 @@ Original Resume:
 {json.dumps(safe_resume, indent=2)}
 
 Instructions:
-1. KEEP ALL ORIGINAL SKILLS UNCHANGED - Copy the entire 'skills' list exactly as provided in the original resume.
-2. Filter the 'projects' list to include ONLY those that mention any of the job keywords in their description or technologies.
-3. Rewrite the 'summary' field to be a 2-4 sentence summary that highlights the candidate's fit for the job, using only information from the resume and the job keywords.
-4. Do NOT add or invent any new skills, projects, or summary content.
-5. Return the complete resume in the exact same JSON format, with the original skills kept unchanged, filtered projects, and new summary.
+1. KEEP ORIGINAL SKILLS AS PROVIDED - Copy the entire 'skills' list exactly as provided in the original resume (post-processing will prioritize and limit to 22 most relevant skills).
+2. KEEP CERTIFICATIONS UNCHANGED - Copy the entire 'certifications' section exactly as provided in the original resume without any modifications.
+3. EXTRACT ALL PROJECTS from BOTH 'projects' and 'experience' sections - Convert work experience descriptions into project format and include them along with existing projects. Include ALL projects regardless of job keyword relevance (post-processing will handle prioritization and enhancement).
+4. Rewrite the 'summary' field to be a 2-4 sentence summary that highlights the candidate's fit for the job, using only information from the resume and the job keywords.
+5. Do NOT add or invent any new skills, projects, certifications, or summary content - only extract and restructure existing information.
+6. Return the complete resume in the exact same JSON format, with the original skills and certifications kept as provided, ALL projects (from both sources), and new summary.
 """
         try:
             response = self.client.chat.completions.create(
@@ -422,36 +472,112 @@ Instructions:
             # Parse the response
             retailored_resume = json.loads(response.choices[0].message.content.strip())
             
-            # IMPORTANT: Ensure all original skills are preserved and add any missing job keywords
-            original_skills = set(safe_resume.get("skills", []))
-            # Convert job keywords to lowercase for case-insensitive comparison
-            job_keywords_lower = {k.lower() for k in job_keywords}
-            original_skills_lower = {s.lower() for s in original_skills}
+            # ENHANCED: Balanced mix of original skills and job keywords (max 22)
+            original_skills = list(safe_resume.get("skills", []))
+            job_keywords_list = list(job_keywords)
             
-            # Add any job keywords that aren't already in the skills list
-            new_skills = []
-            for keyword in job_keywords:
+            # Convert to lowercase for case-insensitive comparison
+            job_keywords_lower = {k.lower() for k in job_keywords_list}
+            original_skills_lower = {s.lower(): s for s in original_skills}  # Keep original casing
+            
+            # Category 1: Original skills that match job keywords (MUST include)
+            matching_skills = []
+            for keyword_lower in job_keywords_lower:
+                if keyword_lower in original_skills_lower:
+                    matching_skills.append(original_skills_lower[keyword_lower])
+            
+            # Category 2: Important missing job keywords (selective)
+            missing_keywords = []
+            for keyword in job_keywords_list:
                 if keyword.lower() not in original_skills_lower:
-                    new_skills.append(keyword)
+                    missing_keywords.append(keyword)
             
-            # Combine original skills with new skills
-            retailored_resume["skills"] = list(original_skills) + new_skills
+            # Category 3: Remaining original skills (preserve candidate's expertise)
+            remaining_original_skills = []
+            for skill in original_skills:
+                if skill.lower() not in job_keywords_lower:
+                    remaining_original_skills.append(skill)
             
-            # --- Custom logic: Only enhance all projects if there is <= 1 relevant project, else keep only relevant projects ---
-            if "projects" in retailored_resume:
-                filtered_projects = retailored_resume["projects"]
-                original_projects = safe_resume.get("projects", [])
-                if len(relevant_projects) == 0:
-                    # If no relevant projects found, include all original projects
-                    filtered_projects = original_projects
-                else:
-                    # If 1 or more relevant projects found, keep only those relevant projects
-                    filtered_projects = relevant_projects
-                for project in filtered_projects:
-                    project["description"] = self.expand_project_description(project, job_keywords)
-                    time.sleep(1)
-                retailored_resume["projects"] = filtered_projects
-    
+            # BALANCED ALLOCATION STRATEGY
+            # Reserve spots: 50% original + 50% job-relevant
+            max_skills = 22
+            reserved_for_original = max_skills // 2  # 11 spots for original skills
+            reserved_for_job_keywords = max_skills - reserved_for_original  # 11 spots for job keywords
+            
+            # Start with matching skills (they count as both original and job-relevant)
+            final_skills = matching_skills[:]
+            
+            # Fill remaining original skills quota
+            remaining_original_quota = reserved_for_original - len(matching_skills)
+            if remaining_original_quota > 0 and remaining_original_skills:
+                # Shuffle for variety, then take the quota
+                shuffled_original = remaining_original_skills[:]
+                random.shuffle(shuffled_original)
+                final_skills.extend(shuffled_original[:remaining_original_quota])
+            
+            # Fill job keywords quota  
+            remaining_keyword_quota = reserved_for_job_keywords - len(matching_skills)
+            if remaining_keyword_quota > 0 and missing_keywords:
+                # Prioritize first few keywords, then shuffle for variety
+                priority_keywords = missing_keywords[:remaining_keyword_quota//2]  # Take first half as priority
+                remaining_keywords = missing_keywords[remaining_keyword_quota//2:]
+                random.shuffle(remaining_keywords)
+                
+                final_skills.extend(priority_keywords)
+                if len(priority_keywords) < remaining_keyword_quota:
+                    additional_needed = remaining_keyword_quota - len(priority_keywords)
+                    final_skills.extend(remaining_keywords[:additional_needed])
+            
+            # If we still have space, fill with any remaining skills (original priority)
+            if len(final_skills) < max_skills:
+                remaining_space = max_skills - len(final_skills)
+                all_remaining = [s for s in remaining_original_skills if s not in final_skills] + \
+                              [k for k in missing_keywords if k not in final_skills]
+                random.shuffle(all_remaining)
+                final_skills.extend(all_remaining[:remaining_space])
+            
+            # Final cleanup: remove duplicates while preserving order and limit to 22
+            seen = set()
+            unique_skills = []
+            for skill in final_skills:
+                if skill.lower() not in seen:
+                    seen.add(skill.lower())
+                    unique_skills.append(skill)
+            
+            retailored_resume["skills"] = unique_skills[:22]
+            
+            # --- New Logic: Rewrite ALL projects based on JD, then select the BEST ones ---
+            
+            # Step 1: Rewrite ALL projects based on job description
+            enhanced_projects_with_scores = []
+            for i, project in enumerate(all_projects):
+                # Rewrite project description based on JD
+                enhanced_description = self.expand_project_description(project, job_keywords)
+                
+                # Score the enhanced description
+                relevance_score = self.score_project_relevance(enhanced_description, job_keywords)
+                
+                # Create enhanced project with score
+                enhanced_project = project.copy()
+                enhanced_project["description"] = enhanced_description
+                enhanced_project["_relevance_score"] = relevance_score
+                
+                enhanced_projects_with_scores.append(enhanced_project)
+                time.sleep(1)  # Rate limiting for API calls
+            
+            # Step 2: Sort by relevance score (best first)
+            enhanced_projects_with_scores.sort(key=lambda x: x["_relevance_score"], reverse=True)
+            
+            # Step 3: Select top 6-8 projects for final resume
+            max_projects = min(8, len(enhanced_projects_with_scores))
+            final_projects = enhanced_projects_with_scores[:max_projects]
+            
+            # Step 4: Remove the score field before final output
+            for project in final_projects:
+                project.pop("_relevance_score", None)
+            
+            retailored_resume["projects"] = final_projects
+     
             return retailored_resume
         except Exception as e:
             st.error(f"Error retailoring resume: {str(e)}")

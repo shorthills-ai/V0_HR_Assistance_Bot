@@ -726,7 +726,7 @@ elif page == "JD-Resume Regeneration":
                             col_p1, col_p2 = st.columns([1,1])
                             with col_p1:
                                 if st.button("➕ Add Project", key=f"add_proj_bulk_{cand['mongo_id']}"):
-                                    resume_data["projects"].append({"title": "", "description": ""})
+                                    resume_data["projects"].append({"title": "", "description": "", "link": ""})
                                     st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
                                     st.success("Added new project entry.")
                                     st.rerun()
@@ -795,6 +795,60 @@ elif page == "JD-Resume Regeneration":
 
                             # Generate PDF button
                             if st.button("🔄 Update and Generate New PDF", key=f"update_pdf_bulk_{cand['mongo_id']}"):
+                                # Sync current AgGrid data with resume_data before PDF generation
+                                # Update skills from AgGrid
+                                current_skills = [row['Skill'] for _, row in updated_skill_df.iterrows() if row['Skill'] and str(row['Skill']).strip()]
+                                resume_data["skills"] = current_skills
+                                
+                                # Update education from AgGrid
+                                updated_edu_df = pd.DataFrame(edu_response["data"])
+                                current_education = []
+                                for _, row in updated_edu_df.iterrows():
+                                    institution = str(row['Institution']) if row['Institution'] else ""
+                                    degree = str(row['Degree']) if row['Degree'] else ""
+                                    year = str(row['Year']) if row['Year'] else ""
+                                    if institution.strip() or degree.strip() or year.strip():
+                                        current_education.append({
+                                            "institution": institution,
+                                            "degree": degree,
+                                            "year": year
+                                        })
+                                resume_data["education"] = current_education
+                                
+                                # Update certifications from AgGrid
+                                updated_cert_df = pd.DataFrame(cert_response["data"])
+                                current_certifications = []
+                                for _, row in updated_cert_df.iterrows():
+                                    title = str(row['Title']) if row['Title'] else ""
+                                    issuer = str(row['Issuer']) if row['Issuer'] else ""
+                                    year = str(row['Year']) if row['Year'] else ""
+                                    link = str(row['link']) if row['link'] else ""
+                                    if title.strip() or issuer.strip():
+                                        current_certifications.append({
+                                            "title": title,
+                                            "issuer": issuer,
+                                            "year": year,
+                                            "link": link
+                                        })
+                                resume_data["certifications"] = current_certifications
+                                
+                                # Update projects from AgGrid
+                                updated_proj_df = pd.DataFrame(proj_response["data"])
+                                current_projects = []
+                                for _, row in updated_proj_df.iterrows():
+                                    title = str(row['Title']) if row['Title'] else ""
+                                    description = str(row['Description']) if row['Description'] else ""
+                                    link = str(row['link']) if row['link'] else ""
+                                    if title.strip() or description.strip():
+                                        current_projects.append({
+                                            "title": title,
+                                            "description": description,
+                                            "link": link
+                                        })
+                                resume_data["projects"] = current_projects
+                                
+                                # Update session state with synchronized data
+                                st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
                                 st.session_state.resume_data = copy.deepcopy(resume_data)
                                 st.session_state['expander_open_single'] = True  # Open expander after PDF generation
                                 st.session_state['summary_generation_complete'] = False  # Reset summary state
@@ -944,7 +998,7 @@ elif page == "JD-Resume Regeneration":
                 if search_field == "Name":
                     query = {"name": {"$regex": f"^{search_value}$", "$options": "i"}}
                 elif search_field == "Employee ID":
-                    query = {"ID": {"$regex": f"^{search_value}$", "$options": "i"}}
+                    query = {"employee_id": {"$regex": f"^{search_value}$", "$options": "i"}}
                 else:
                     query = {search_field.lower(): {"$regex": f"^{search_value}$", "$options": "i"}}
                 results = db_manager.find(query)
@@ -1156,7 +1210,7 @@ elif page == "JD-Resume Regeneration":
                 col_p1, col_p2 = st.columns([1,1])
                 with col_p1:
                     if st.button("➕ Add Project", key="add_proj_single"):
-                        resume_data["projects"].append({"title": "", "description": ""})
+                        resume_data["projects"].append({"title": "", "description": "", "link": ""})
                         st.session_state.resume_data = copy.deepcopy(resume_data)
                         st.success("Added new project entry.")
                         st.rerun()
@@ -1225,6 +1279,60 @@ elif page == "JD-Resume Regeneration":
 
                 # Generate PDF button
                 if st.button("🔄 Update and Generate New PDF", key="update_pdf_single"):
+                    # Sync current AgGrid data with resume_data before PDF generation
+                    # Update skills from AgGrid
+                    updated_skill_df = pd.DataFrame(skill_response["data"])
+                    current_skills = [row['Skill'] for _, row in updated_skill_df.iterrows() if row['Skill'] and str(row['Skill']).strip()]
+                    resume_data["skills"] = current_skills
+                    
+                    # Update education from AgGrid
+                    updated_edu_df = pd.DataFrame(edu_response["data"])
+                    current_education = []
+                    for _, row in updated_edu_df.iterrows():
+                        institution = str(row['Institution']) if row['Institution'] else ""
+                        degree = str(row['Degree']) if row['Degree'] else ""
+                        year = str(row['Year']) if row['Year'] else ""
+                        if institution.strip() or degree.strip() or year.strip():
+                            current_education.append({
+                                "institution": institution,
+                                "degree": degree,
+                                "year": year
+                            })
+                    resume_data["education"] = current_education
+                    
+                    # Update certifications from AgGrid
+                    updated_cert_df = pd.DataFrame(cert_response["data"])
+                    current_certifications = []
+                    for _, row in updated_cert_df.iterrows():
+                        title = str(row['Title']) if row['Title'] else ""
+                        issuer = str(row['Issuer']) if row['Issuer'] else ""
+                        year = str(row['Year']) if row['Year'] else ""
+                        link = str(row['link']) if row['link'] else ""
+                        if title.strip() or issuer.strip():
+                            current_certifications.append({
+                                "title": title,
+                                "issuer": issuer,
+                                "year": year,
+                                "link": link
+                            })
+                    resume_data["certifications"] = current_certifications
+                    
+                    # Update projects from AgGrid
+                    updated_proj_df = pd.DataFrame(proj_response["data"])
+                    current_projects = []
+                    for _, row in updated_proj_df.iterrows():
+                        title = str(row['Title']) if row['Title'] else ""
+                        description = str(row['Description']) if row['Description'] else ""
+                        link = str(row['link']) if row['link'] else ""
+                        if title.strip() or description.strip():
+                            current_projects.append({
+                                "title": title,
+                                "description": description,
+                                "link": link
+                            })
+                    resume_data["projects"] = current_projects
+                    
+                    # Update session state with synchronized data
                     st.session_state.resume_data = copy.deepcopy(resume_data)
                     st.session_state['expander_open_single'] = True  # Open expander after PDF generation
                     st.session_state['summary_generation_complete'] = False  # Reset summary state
