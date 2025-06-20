@@ -71,7 +71,7 @@
       overflow: hidden;
     }
     .left-column {
-      width: 38%;
+      width: 35%;
       min-width: 200px;
       max-width: 100%;
       padding-right: 8px;
@@ -106,7 +106,7 @@
       margin-bottom: 0;
     }
     .right-column {
-      width: 70%;
+      width: 65%;
       padding-left: 18px;
       margin-top: 0;
     }
@@ -344,13 +344,15 @@
         <p>{{ cv.summary|safe }}</p>
       {% endif %}
       {% if cv.projects %}
-        <div style="height: 12px;"></div>
-        <div class="section-title" style="margin-top: 8px;">Key Responsibilities:</div>
-        <div style="height: 2px;"></div>
+        <div style="height: 8px;"></div>
+        <div class="section-title" style="margin-top: 0;">Key Responsibilities:</div>
+        <div style="height: 4px;"></div>
+        {% set project_counter = [1] %}
         {% for project in cv.projects %}
           <div class="project-block">
             {% if project.title %}
-              <h3 class="project-title">Project {{ loop.index }}: {{ project.title|safe }}</h3>
+              <h3 class="project-title">Project {{ project_counter[0] }}: {{ project.title|safe }}</h3>
+              {% if project_counter.append(project_counter.pop() + 1) %}{% endif %}
             {% endif %}
             {% if project.description %}
               <ul class="custom-arrow-list">

@@ -19,26 +19,62 @@ class JobDescriptionAnalyzer:
         )
         
     def extract_keywords(self, job_description: str) -> Dict[str, Set[str]]:
-        """Extract keywords from job description using Azure OpenAI."""
-        system_prompt = """You are an AI assistant that extracts ONLY the most relevant and specific keywords from job descriptions. 
-Focus on extracting:
-1. Required technical skills and technologies
-2. Programming languages
-3. Tools and frameworks
-4. Key responsibilities that indicate required skills
+        """Extract keywords from job description using Azure OpenAI with enhanced parsing of parenthetical content."""
+        system_prompt = """You are an AI assistant that intelligently extracts technical keywords from job descriptions. 
+You MUST parse content within parentheses, brackets, and comma-separated lists to extract ALL individual keywords.
 
-Important rules:
-- Extract ONLY keywords that are explicitly mentioned in the job description
-- DO NOT add any keywords that are not directly stated
-- DO NOT infer or assume additional skills
-- Return a JSON object with a single array field named 'keywords'
-- Keep the list focused and specific
-- Avoid generic terms unless explicitly required"""
+CRITICAL PARSING RULES:
 
-        user_prompt = f"""Extract ONLY the explicitly mentioned technical keywords from this job description. Return a JSON object with a 'keywords' array.
+1. **Parentheses/Brackets Parsing**: For content like "Large Language Models (LLMs)", extract BOTH:
+   - The main term: "Large Language Models"
+   - The content inside: "LLMs"
+
+2. **Comma-Separated Lists**: For content like "Fine-tuning (LoRA, PEFT, QLoRA, etc.)", extract:
+   - The main term: "Fine-tuning"
+   - Each individual item: "LoRA", "PEFT", "QLoRA"
+   - IGNORE: "etc.", "and more", "among others"
+
+3. **Multiple Items in Parentheses**: For "Transformers (HuggingFace Transformers, BERT, GPT, LLaMA, etc.)", extract:
+   - "Transformers"
+   - "HuggingFace Transformers" 
+   - "BERT"
+   - "GPT"
+   - "LLaMA"
+
+4. **Nested Technologies**: For "Vector Databases (Pinecone, Weaviate, Qdrant, Chroma)", extract:
+   - "Vector Databases"
+   - "Pinecone"
+   - "Weaviate"
+   - "Qdrant"
+   - "Chroma"
+
+5. **Clean Keywords**:
+   - Remove trailing words like "etc.", "and more", "among others"
+   - Keep abbreviations and acronyms (LLMs, RAG, API, etc.)
+   - Keep hyphenated terms (Fine-tuning, Multi-modal)
+   - Keep version numbers (Python 3.x, TensorFlow 2.x)
+
+6. **Focus Areas**:
+   - Technical skills and technologies
+   - Programming languages
+   - Frameworks and libraries
+   - Tools and platforms
+   - Methodologies and techniques
+   - APIs and services
+
+Return a JSON object with a single 'keywords' array containing ALL extracted individual keywords."""
+
+        user_prompt = f"""Parse this job description and extract ALL individual technical keywords. Pay special attention to content in parentheses and brackets - extract both the main terms AND all individual items inside.
 
 Job Description:
-{job_description}"""
+{job_description}
+
+Examples of expected parsing:
+- "Large Language Models (LLMs)" → ["Large Language Models", "LLMs"]
+- "Fine-tuning (LoRA, PEFT, QLoRA, etc.)" → ["Fine-tuning", "LoRA", "PEFT", "QLoRA"]
+- "Vector Databases (Pinecone, Weaviate)" → ["Vector Databases", "Pinecone", "Weaviate"]
+
+Return JSON with 'keywords' array containing all extracted terms."""
         
         try:
             response = self.client.chat.completions.create(
@@ -208,28 +244,27 @@ You are a professional technical resume writer. Your task is to convert raw proj
 
 Follow these rules:
 
-1. Output 4 to 7 bullet points, each 1–2 lines long maximum. Don't write extra, be to the point and concise.
+1. Output 4 to 7 achievement sentences separated by periods. Each sentence should be 15-30 words maximum.
 2. The first line compulsorily has to be a professionally retailored title of the project, do this for every project and make sure it has only first letter of each word capitalised.
     -> If its a work experience, make sure not to include company name in the title and give a generic title to the specific project.
-3. Each bullet point must start with a strong past-tense action verb (Engineered, Built, Automated, Designed, Achieved, etc.).
-4. The bullet points should:
- -> summarize what you built, what technologies you used, and why it mattered — no fluff, no LLM mentions unless critical.
- -> describe any UX, responsiveness, optimization, version control, or frontend/backend implementation details.
- -> include specific results using clear metrics — e.g., "93% coverage," "reduced latency by 40%," "automated 80% of manual work."
- -> explain the business or user impact — how it helped the client, user, or team.
-5. Keep each bullet short and crisp — aim for clarity, not verbosity.
-6. Use plain text without bullet symbols - no special symbols, bullets, or arrows.
-7. IMPORTANT: Align the project description with the job keywords provided. Emphasize technologies, skills, and experiences that match the job requirements.
-8. If the project uses any of the job keywords, make sure to explicitly mention them and show how they were applied effectively.
+    -> DO NOT repeat this title anywhere in the description that follows.
+3. Each achievement sentence must start with a strong past-tense action verb (Engineered, Built, Automated, Designed, Achieved, etc.).
+4. Each achievement sentence should be a complete, standalone sentence that:
+ -> summarizes one specific accomplishment with technologies used and impact achieved
+ -> includes specific results using clear metrics — e.g., "93% coverage," "reduced latency by 40%," "automated 80% of manual work"
+ -> explains the business or user impact in measurable terms
+ -> mentions relevant technologies and methodologies from the job keywords
+5. CRITICAL: End each sentence with a period (.) - this is essential for proper formatting.
+6. Write as a continuous paragraph with sentences separated by periods and spaces.
+7. Do NOT use bullet symbols, dashes, or line breaks - write as flowing sentences with periods.
+8. IMPORTANT: Align the project description with the job keywords provided. Emphasize technologies, skills, and experiences that match the job requirements.
+9. If the project uses any of the job keywords, make sure to explicitly mention them and show how they were applied effectively.
 
-You must NOT generate a paragraph — return the project title on the first line, followed by 4 to 7 achievement lines without any bullet symbols.
+Return ONLY the professional project title on the first line, followed by a paragraph of 4-7 sentences separated by periods (without repeating the title).
 
 Example format:
 Enhanced E-Commerce Platform
-Engineered responsive web application using React, Node.js, and MongoDB, serving 10,000+ daily users
-Implemented payment gateway integration with Stripe API, increasing conversion rates by 25%
-Optimized database queries and API responses, reducing page load time by 40%
-Built automated testing suite with Jest and Cypress, achieving 95% code coverage
+Engineered responsive web application using React, Node.js, and MongoDB, serving 10,000+ daily users. Implemented payment gateway integration with Stripe API, increasing conversion rates by 25%. Optimized database queries and API responses, reducing page load time by 40%. Built automated testing suite with Jest and Cypress, achieving 95% code coverage.
 """
 
         user_prompt = f"""
@@ -238,14 +273,11 @@ Raw Description: {project['description']}
 Technologies: {', '.join(project.get('technologies', []))}
 Job Keywords to Align With: {', '.join(job_keywords)}
 
-Using the system instructions, create a professional project title followed by 4 to 7 clear, action-driven achievement lines (without bullet symbols) that summarize the project and align it with the job requirements.
+Using the system instructions, create a professional project title on the first line, then a paragraph of 4-7 sentences (separated by periods) that summarize the project and align it with the job requirements.
 
 Required format:
 [Professional Project Title]
-[Action verb] [description with technologies and impact]
-[Action verb] [description with metrics/results]
-[Action verb] [description highlighting job keyword alignment]
-[Additional achievement lines as needed]
+[Action verb] [description with technologies and impact]. [Action verb] [description with metrics/results]. [Action verb] [description highlighting job keyword alignment]. [Additional sentences as needed].
 """
 
         try:
@@ -498,53 +530,47 @@ Instructions:
                 if skill.lower() not in job_keywords_lower:
                     remaining_original_skills.append(skill)
             
-            # BALANCED ALLOCATION STRATEGY
-            # Reserve spots: 50% original + 50% job-relevant
+            # ENHANCED: Balanced mix with complete randomization for better distribution
             max_skills = 22
-            reserved_for_original = max_skills // 2  # 11 spots for original skills
-            reserved_for_job_keywords = max_skills - reserved_for_original  # 11 spots for job keywords
             
-            # Start with matching skills (they count as both original and job-relevant)
-            final_skills = matching_skills[:]
+            # Step 1: Combine all skills into categories
+            all_skills_pool = []
             
-            # Fill remaining original skills quota
-            remaining_original_quota = reserved_for_original - len(matching_skills)
-            if remaining_original_quota > 0 and remaining_original_skills:
-                # Shuffle for variety, then take the quota
-                shuffled_original = remaining_original_skills[:]
-                random.shuffle(shuffled_original)
-                final_skills.extend(shuffled_original[:remaining_original_quota])
+            # Add matching skills (highest priority - always include)
+            all_skills_pool.extend([(skill, 'matching') for skill in matching_skills])
             
-            # Fill job keywords quota  
-            remaining_keyword_quota = reserved_for_job_keywords - len(matching_skills)
-            if remaining_keyword_quota > 0 and missing_keywords:
-                # Prioritize first few keywords, then shuffle for variety
-                priority_keywords = missing_keywords[:remaining_keyword_quota//2]  # Take first half as priority
-                remaining_keywords = missing_keywords[remaining_keyword_quota//2:]
-                random.shuffle(remaining_keywords)
-                
-                final_skills.extend(priority_keywords)
-                if len(priority_keywords) < remaining_keyword_quota:
-                    additional_needed = remaining_keyword_quota - len(priority_keywords)
-                    final_skills.extend(remaining_keywords[:additional_needed])
+            # Add remaining original skills 
+            all_skills_pool.extend([(skill, 'original') for skill in remaining_original_skills])
             
-            # If we still have space, fill with any remaining skills (original priority)
+            # Add missing job keywords (selective - take about half)
+            selected_missing = missing_keywords[:len(missing_keywords)//2 + 2]  # Take roughly half + 2 extra
+            all_skills_pool.extend([(skill, 'job_keyword') for skill in selected_missing])
+            
+            # Step 2: Shuffle the entire pool randomly for complete mixing
+            random.shuffle(all_skills_pool)
+            
+            # Step 3: Select up to 22 skills while avoiding duplicates
+            seen = set()
+            final_skills = []
+            
+            for skill, source in all_skills_pool:
+                if skill.lower() not in seen and len(final_skills) < max_skills:
+                    seen.add(skill.lower())
+                    final_skills.append(skill)
+            
+            # Step 4: If we still need more skills, add any remaining ones
             if len(final_skills) < max_skills:
                 remaining_space = max_skills - len(final_skills)
-                all_remaining = [s for s in remaining_original_skills if s not in final_skills] + \
-                              [k for k in missing_keywords if k not in final_skills]
-                random.shuffle(all_remaining)
-                final_skills.extend(all_remaining[:remaining_space])
+                leftover_skills = [k for k in missing_keywords[len(missing_keywords)//2 + 2:] 
+                                 if k.lower() not in seen]
+                random.shuffle(leftover_skills)
+                
+                for skill in leftover_skills[:remaining_space]:
+                    if skill.lower() not in seen:
+                        seen.add(skill.lower())
+                        final_skills.append(skill)
             
-            # Final cleanup: remove duplicates while preserving order and limit to 22
-            seen = set()
-            unique_skills = []
-            for skill in final_skills:
-                if skill.lower() not in seen:
-                    seen.add(skill.lower())
-                    unique_skills.append(skill)
-            
-            retailored_resume["skills"] = unique_skills[:22]
+            retailored_resume["skills"] = final_skills[:22]
             
             # --- New Logic: Rewrite ALL projects based on JD, then select the BEST ones ---
             
@@ -554,12 +580,23 @@ Instructions:
                 # Rewrite project description based on JD
                 enhanced_description = self.expand_project_description(project, job_keywords)
                 
-                # Score the enhanced description
-                relevance_score = self.score_project_relevance(enhanced_description, job_keywords)
+                # Extract title and description from AI response
+                lines = enhanced_description.split('\n', 1)  # Split into title and rest
+                if len(lines) >= 2:
+                    ai_generated_title = lines[0].strip()  # First line is the AI-generated title
+                    actual_description = lines[1].strip()  # Rest is the description
+                else:
+                    # Fallback if only one line
+                    ai_generated_title = lines[0].strip() if lines else project.get('title', 'Project')
+                    actual_description = ""
                 
-                # Create enhanced project with score
+                # Score the enhanced description
+                relevance_score = self.score_project_relevance(actual_description, job_keywords)
+                
+                # Create enhanced project with AI-generated title and cleaned description
                 enhanced_project = project.copy()
-                enhanced_project["description"] = enhanced_description
+                enhanced_project["title"] = ai_generated_title  # Use AI-generated title
+                enhanced_project["description"] = actual_description  # Use description without title
                 enhanced_project["_relevance_score"] = relevance_score
                 
                 enhanced_projects_with_scores.append(enhanced_project)
@@ -568,8 +605,8 @@ Instructions:
             # Step 2: Sort by relevance score (best first)
             enhanced_projects_with_scores.sort(key=lambda x: x["_relevance_score"], reverse=True)
             
-            # Step 3: Select top 6-8 projects for final resume
-            max_projects = min(8, len(enhanced_projects_with_scores))
+            # Step 3: Select top 3 projects for final resume (maximum limit)
+            max_projects = min(3, len(enhanced_projects_with_scores))
             final_projects = enhanced_projects_with_scores[:max_projects]
             
             # Step 4: Remove the score field before final output

@@ -590,7 +590,16 @@ elif page == "JD-Resume Regeneration":
                             gb_edu = GridOptionsBuilder.from_dataframe(edu_df)
                             gb_edu.configure_selection('multiple', use_checkbox=True)
                             for col in edu_df.columns:
-                                gb_edu.configure_column(col, editable=True, cellStyle={"whiteSpace": "normal", "wordBreak": "break-word"}, tooltipField=col, resizable=True, flex=1)
+                                gb_edu.configure_column(
+                                    col, 
+                                    editable=True, 
+                                    cellStyle={"whiteSpace": "normal", "wordBreak": "break-word"}, 
+                                    cellEditor="agTextAreaCellEditor",
+                                    cellEditorParams={"maxLength": 500, "rows": 3, "cols": 50},
+                                    tooltipField=col, 
+                                    resizable=True, 
+                                    flex=1
+                                )
                             gb_edu.configure_grid_options(rowDragManaged=True, rowHeight=100)
                             gridOptions_edu = gb_edu.build()
                             edu_response = AgGrid(
@@ -615,11 +624,23 @@ elif page == "JD-Resume Regeneration":
                                 if st.button("🗑️ Delete Checked Education", key=f"del_edu_bulk_{cand['mongo_id']}"):
                                     selected_rows = edu_response['selected_rows']
                                     if not selected_rows.empty:
-                                        selected_set = set((row['Institution'], row['Degree'], row['Year']) for _, row in selected_rows.iterrows())
-                                        resume_data["education"] = [
-                                            row for row in resume_data["education"]
-                                            if (row.get("institution", ""), row.get("degree", ""), row.get("year", "")) not in selected_set
-                                        ]
+                                        # Use current AG-Grid data for deletion
+                                        current_df = pd.DataFrame(edu_response["data"])
+                                        selected_indices = selected_rows.index.tolist()
+                                        remaining_df = current_df.drop(selected_indices)
+                                        # Convert back to session state format
+                                        new_education = []
+                                        for _, row in remaining_df.iterrows():
+                                            institution = str(row['Institution']) if row['Institution'] else ""
+                                            degree = str(row['Degree']) if row['Degree'] else ""
+                                            year = str(row['Year']) if row['Year'] else ""
+                                            if institution.strip() or degree.strip() or year.strip():
+                                                new_education.append({
+                                                    "institution": institution,
+                                                    "degree": degree,
+                                                    "year": year
+                                                })
+                                        resume_data["education"] = new_education
                                         st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
                                         st.success("Deleted selected education entries.")
                                         st.rerun()
@@ -647,7 +668,16 @@ elif page == "JD-Resume Regeneration":
                             gb_cert = GridOptionsBuilder.from_dataframe(cert_df)
                             gb_cert.configure_selection('multiple', use_checkbox=True)
                             for col in cert_df.columns:
-                                gb_cert.configure_column(col, editable=True, cellStyle={"whiteSpace": "normal", "wordBreak": "break-word"}, tooltipField=col, resizable=True, flex=1)
+                                gb_cert.configure_column(
+                                    col, 
+                                    editable=True, 
+                                    cellStyle={"whiteSpace": "normal", "wordBreak": "break-word"}, 
+                                    cellEditor="agTextAreaCellEditor",
+                                    cellEditorParams={"maxLength": 500, "rows": 3, "cols": 50},
+                                    tooltipField=col, 
+                                    resizable=True, 
+                                    flex=1
+                                )
                             gb_cert.configure_grid_options(rowDragManaged=True, rowHeight=100)
                             gridOptions_cert = gb_cert.build()
                             cert_response = AgGrid(
@@ -672,11 +702,25 @@ elif page == "JD-Resume Regeneration":
                                 if st.button("🗑️ Delete Checked Certifications", key=f"del_cert_bulk_{cand['mongo_id']}"):
                                     selected_rows = cert_response['selected_rows']
                                     if not selected_rows.empty:
-                                        selected_set = set((row['Title'], row['Issuer'], row['Year'], row['link']) for _, row in selected_rows.iterrows())
-                                        resume_data["certifications"] = [
-                                            row for row in resume_data["certifications"]
-                                            if (row.get("title", ""), row.get("issuer", ""), row.get("year", ""), row.get("link", "")) not in selected_set
-                                        ]
+                                        # Use current AG-Grid data for deletion
+                                        current_df = pd.DataFrame(cert_response["data"])
+                                        selected_indices = selected_rows.index.tolist()
+                                        remaining_df = current_df.drop(selected_indices)
+                                        # Convert back to session state format
+                                        new_certifications = []
+                                        for _, row in remaining_df.iterrows():
+                                            title = str(row['Title']) if row['Title'] else ""
+                                            issuer = str(row['Issuer']) if row['Issuer'] else ""
+                                            year = str(row['Year']) if row['Year'] else ""
+                                            link = str(row['link']) if row['link'] else ""
+                                            if title.strip() or issuer.strip():
+                                                new_certifications.append({
+                                                    "title": title,
+                                                    "issuer": issuer,
+                                                    "year": year,
+                                                    "link": link
+                                                })
+                                        resume_data["certifications"] = new_certifications
                                         st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
                                         st.success("Deleted selected certifications.")
                                         st.rerun()
@@ -707,9 +751,28 @@ elif page == "JD-Resume Regeneration":
                             gb_proj.configure_selection('multiple', use_checkbox=True)
                             for col in proj_df.columns:
                                 if col == "Description":
-                                    gb_proj.configure_column(col, editable=True, cellStyle={"whiteSpace": "pre-line", "wordBreak": "break-word"}, tooltipField=col, resizable=True, flex=2, minWidth=600)
+                                    gb_proj.configure_column(
+                                        col, 
+                                        editable=True, 
+                                        cellStyle={"whiteSpace": "pre-line", "wordBreak": "break-word"}, 
+                                        cellEditor="agLargeTextCellEditor",
+                                        cellEditorParams={"maxLength": 2000, "rows": 8, "cols": 80},
+                                        tooltipField=col, 
+                                        resizable=True, 
+                                        flex=2, 
+                                        minWidth=600
+                                    )
                                 else:
-                                    gb_proj.configure_column(col, editable=True, cellStyle={"whiteSpace": "normal", "wordBreak": "break-word"}, tooltipField=col, resizable=True, flex=1)
+                                    gb_proj.configure_column(
+                                        col, 
+                                        editable=True, 
+                                        cellStyle={"whiteSpace": "normal", "wordBreak": "break-word"}, 
+                                        cellEditor="agTextAreaCellEditor",
+                                        cellEditorParams={"maxLength": 500, "rows": 2, "cols": 50},
+                                        tooltipField=col, 
+                                        resizable=True, 
+                                        flex=1
+                                    )
                             gb_proj.configure_grid_options(rowDragManaged=True, rowHeight=200)
                             gridOptions_proj = gb_proj.build()
                             proj_response = AgGrid(
@@ -734,11 +797,23 @@ elif page == "JD-Resume Regeneration":
                                 if st.button("🗑️ Delete Checked Projects", key=f"del_proj_bulk_{cand['mongo_id']}"):
                                     selected_rows = proj_response['selected_rows']
                                     if not selected_rows.empty:
-                                        selected_set = set((row['Title'], row['Description'], row['link']) for _, row in selected_rows.iterrows())
-                                        resume_data["projects"] = [
-                                            row for row in resume_data["projects"]
-                                            if (row.get("title", ""), row.get("description", ""), row.get("link", "")) not in selected_set
-                                        ]
+                                        # Use current AG-Grid data for deletion
+                                        current_df = pd.DataFrame(proj_response["data"])
+                                        selected_indices = selected_rows.index.tolist()
+                                        remaining_df = current_df.drop(selected_indices)
+                                        # Convert back to session state format
+                                        new_projects = []
+                                        for _, row in remaining_df.iterrows():
+                                            title = str(row['Title']) if row['Title'] else ""
+                                            description = str(row['Description']) if row['Description'] else ""
+                                            link = str(row['link']) if row['link'] else ""
+                                            if title.strip() or description.strip():
+                                                new_projects.append({
+                                                    "title": title,
+                                                    "description": description,
+                                                    "link": link
+                                                })
+                                        resume_data["projects"] = new_projects
                                         st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
                                         st.success("Deleted selected projects.")
                                         st.rerun()
@@ -756,7 +831,14 @@ elif page == "JD-Resume Regeneration":
                             gb_skill = GridOptionsBuilder.from_dataframe(skill_df)
                             gb_skill.configure_selection('multiple', use_checkbox=True)
                             for col in skill_df.columns:
-                                gb_skill.configure_column(col, editable=True, resizable=True, flex=1)
+                                gb_skill.configure_column(
+                                    col, 
+                                    editable=True, 
+                                    cellEditor="agTextCellEditor",
+                                    cellEditorParams={"maxLength": 100},
+                                    resizable=True, 
+                                    flex=1
+                                )
                             gb_skill.configure_grid_options(rowDragManaged=True, rowHeight=25)
                             gridOptions_skill = gb_skill.build()
                             skill_response = AgGrid(
@@ -781,11 +863,13 @@ elif page == "JD-Resume Regeneration":
                                 if st.button("🗑️ Delete Checked Skills", key=f"del_skill_bulk_{cand['mongo_id']}"):
                                     selected_rows = skill_response['selected_rows']
                                     if not selected_rows.empty:
-                                        selected_set = set(row['Skill'] for _, row in selected_rows.iterrows())
-                                        resume_data["skills"] = [
-                                            s for s in resume_data["skills"]
-                                            if str(s) not in selected_set
-                                        ]
+                                        # Use current AG-Grid data for deletion
+                                        current_df = pd.DataFrame(skill_response["data"])
+                                        selected_indices = selected_rows.index.tolist()
+                                        remaining_df = current_df.drop(selected_indices)
+                                        # Convert back to session state format
+                                        new_skills = [str(row['Skill']).strip() for _, row in remaining_df.iterrows() if str(row['Skill']).strip()]
+                                        resume_data["skills"] = new_skills
                                         st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
                                         st.success("Deleted selected skills.")
                                         st.rerun()
@@ -849,64 +933,60 @@ elif page == "JD-Resume Regeneration":
                                 
                                 # Update session state with synchronized data
                                 st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
-                                st.session_state.resume_data = copy.deepcopy(resume_data)
-                                st.session_state['expander_open_single'] = True  # Open expander after PDF generation
-                                st.session_state['summary_generation_complete'] = False  # Reset summary state
-                                st.session_state['summary_generation_requested'] = False
+                                st.session_state[f'pdf_ready_{cand["mongo_id"]}'] = True
                                 with st.spinner("Generating PDF..."):
                                     keywords = st.session_state.get('extracted_keywords', None)
                                     pdf_file, html_out = PDFUtils.generate_pdf(resume_data, keywords=keywords)
                                     pdf_b64 = PDFUtils.get_base64_pdf(pdf_file)
-                                    st.session_state.generated_pdf = pdf_file
-                                    st.session_state.generated_pdf_b64 = pdf_b64
-                                    st.session_state.pdf_ready_single = True
+                                    st.session_state[f'generated_pdf_{cand["mongo_id"]}'] = pdf_file
+                                    st.session_state[f'generated_pdf_b64_{cand["mongo_id"]}'] = pdf_b64
                                     st.success("PDF generated successfully!")
 
-                                # --- After PDF generation for single candidate ---
-                                if st.session_state.get("pdf_ready_single", False):
-                                    st.markdown("### 📄 Generated PDF Preview")
-                                    pdf_b64 = st.session_state.generated_pdf_b64
-                                    st.info("If the PDF is not viewable above, your browser may not support embedded PDF viewing.")
-                                    link_id = f"open_pdf_link_{uuid.uuid4().hex}"
-                                    components.html(f"""
-                                        <a id=\"{link_id}\" style=\"margin:10px 0;display:inline-block;padding:8px 16px;font-size:16px;border-radius:5px;background:#0068c9;color:white;text-decoration:none;border:none;cursor:pointer;\">
-                                            🔗 Click here to open the PDF in a new tab
-                                        </a>
-                                        <script>
-                                        const b64Data = \"{pdf_b64}\";
-                                        const byteCharacters = atob(b64Data);
-                                        const byteNumbers = new Array(byteCharacters.length);
-                                        for (let i = 0; i < byteCharacters.length; i++) {{
-                                            byteNumbers[i] = byteCharacters.charCodeAt(i);
-                                        }}
-                                        const byteArray = new Uint8Array(byteNumbers);
-                                        const blob = new Blob([byteArray], {{type: \"application/pdf\"}});
-                                        const blobUrl = URL.createObjectURL(blob);
-                                        const link = document.getElementById(\"{link_id}\");
-                                        link.href = blobUrl;
-                                        link.target = \"_blank\";
-                                        link.rel = \"noopener noreferrer\";
-                                        link.onclick = function() {{
-                                            setTimeout(function(){{URL.revokeObjectURL(blobUrl)}}, 10000);
-                                        }};
-                                        </script>
-                                    """, height=80)
-                                    st.download_button(
-                                        "📄 Download PDF",
-                                        data=st.session_state.generated_pdf,
-                                        file_name=f"{st.session_state.resume_data.get('name', 'resume').replace(' ', '_')}.pdf",
-                                        mime="application/pdf",
-                                        key=f"download_pdf_bulk_{cand['mongo_id']}"
-                                    )
-                                    keywords = st.session_state.get('extracted_keywords', None)
-                                    word_file = DocxUtils.generate_docx(st.session_state.resume_data, keywords=keywords)
-                                    st.download_button(
-                                        "📝 Download Word",
-                                        data=word_file,
-                                        file_name=f"{st.session_state.resume_data.get('name', 'resume').replace(' ', '_')}.docx",
-                                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                        key=f"download_word_bulk_{cand['mongo_id']}"
-                                    )
+                            # --- PDF Preview Section for bulk candidates (Outside button click) ---
+                            if st.session_state.get(f'pdf_ready_{cand["mongo_id"]}', False):
+                                st.markdown("### 📄 Generated PDF Preview")
+                                pdf_b64 = st.session_state[f'generated_pdf_b64_{cand["mongo_id"]}']
+                                st.info("If the PDF is not viewable above, your browser may not support embedded PDF viewing.")
+                                link_id = f"open_pdf_link_{uuid.uuid4().hex}"
+                                components.html(f"""
+                                    <a id=\"{link_id}\" style=\"margin:10px 0;display:inline-block;padding:8px 16px;font-size:16px;border-radius:5px;background:#0068c9;color:white;text-decoration:none;border:none;cursor:pointer;\">
+                                        🔗 Click here to open the PDF in a new tab
+                                    </a>
+                                    <script>
+                                    const b64Data = \"{pdf_b64}\";
+                                    const byteCharacters = atob(b64Data);
+                                    const byteNumbers = new Array(byteCharacters.length);
+                                    for (let i = 0; i < byteCharacters.length; i++) {{
+                                        byteNumbers[i] = byteCharacters.charCodeAt(i);
+                                    }}
+                                    const byteArray = new Uint8Array(byteNumbers);
+                                    const blob = new Blob([byteArray], {{type: \"application/pdf\"}});
+                                    const blobUrl = URL.createObjectURL(blob);
+                                    const link = document.getElementById(\"{link_id}\");
+                                    link.href = blobUrl;
+                                    link.target = \"_blank\";
+                                    link.rel = \"noopener noreferrer\";
+                                    link.onclick = function() {{
+                                        setTimeout(function(){{URL.revokeObjectURL(blobUrl)}}, 10000);
+                                    }};
+                                    </script>
+                                """, height=80)
+                                st.download_button(
+                                    "📄 Download PDF",
+                                    data=st.session_state[f'generated_pdf_{cand["mongo_id"]}'],
+                                    file_name=f"{resume_data.get('name', 'resume').replace(' ', '_')}.pdf",
+                                    mime="application/pdf",
+                                    key=f"download_pdf_bulk_{cand['mongo_id']}"
+                                )
+                                keywords = st.session_state.get('extracted_keywords', None)
+                                word_file = DocxUtils.generate_docx(resume_data, keywords=keywords)
+                                st.download_button(
+                                    "📝 Download Word",
+                                    data=word_file,
+                                    file_name=f"{resume_data.get('name', 'resume').replace(' ', '_')}.docx",
+                                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                    key=f"download_word_bulk_{cand['mongo_id']}"
+                                )
 
                                 # Add Pitch Summary Generation
                             
@@ -1077,7 +1157,16 @@ elif page == "JD-Resume Regeneration":
                 gb_edu = GridOptionsBuilder.from_dataframe(edu_df)
                 gb_edu.configure_selection('multiple', use_checkbox=True)
                 for col in edu_df.columns:
-                    gb_edu.configure_column(col, editable=True, cellStyle={"whiteSpace": "normal", "wordBreak": "break-word"}, tooltipField=col, resizable=True, flex=1)
+                    gb_edu.configure_column(
+                        col, 
+                        editable=True, 
+                        cellStyle={"whiteSpace": "normal", "wordBreak": "break-word"}, 
+                        cellEditor="agTextAreaCellEditor",
+                        cellEditorParams={"maxLength": 500, "rows": 3, "cols": 50},
+                        tooltipField=col, 
+                        resizable=True, 
+                        flex=1
+                    )
                 gb_edu.configure_grid_options(rowDragManaged=True, rowHeight=100)
                 gridOptions_edu = gb_edu.build()
                 edu_response = AgGrid(
@@ -1090,6 +1179,22 @@ elif page == "JD-Resume Regeneration":
                     fit_columns_on_grid_load=True,
                     key="aggrid_edu_single"
                 )
+                # Get current data from AG-Grid and sync with session state immediately
+                current_edu_data = pd.DataFrame(edu_response["data"])
+                current_education = []
+                for _, row in current_edu_data.iterrows():
+                    institution = str(row['Institution']) if row['Institution'] else ""
+                    degree = str(row['Degree']) if row['Degree'] else ""
+                    year = str(row['Year']) if row['Year'] else ""
+                    if institution.strip() or degree.strip() or year.strip():
+                        current_education.append({
+                            "institution": institution,
+                            "degree": degree,
+                            "year": year
+                        })
+                resume_data["education"] = current_education
+                st.session_state.resume_data = copy.deepcopy(resume_data)
+                
                 col_e1, col_e2 = st.columns([1,1])
                 with col_e1:
                     if st.button("➕ Add Education", key="add_edu_single"):
@@ -1101,11 +1206,24 @@ elif page == "JD-Resume Regeneration":
                     if st.button("🗑️ Delete Checked Education", key="del_edu_single"):
                         selected_rows = edu_response['selected_rows']
                         if not selected_rows.empty:
-                            selected_set = set((row['Institution'], row['Degree'], row['Year']) for _, row in selected_rows.iterrows())
-                            resume_data["education"] = [
-                                row for row in resume_data["education"]
-                                if (row.get("institution", ""), row.get("degree", ""), row.get("year", "")) not in selected_set
-                            ]
+                            # Use the current AG-Grid data, not session state
+                            current_df = pd.DataFrame(edu_response["data"])
+                            selected_indices = selected_rows.index.tolist()
+                            # Keep only rows that are NOT selected
+                            remaining_df = current_df.drop(selected_indices)
+                            # Convert back to session state format
+                            new_education = []
+                            for _, row in remaining_df.iterrows():
+                                institution = str(row['Institution']) if row['Institution'] else ""
+                                degree = str(row['Degree']) if row['Degree'] else ""
+                                year = str(row['Year']) if row['Year'] else ""
+                                if institution.strip() or degree.strip() or year.strip():
+                                    new_education.append({
+                                        "institution": institution,
+                                        "degree": degree,
+                                        "year": year
+                                    })
+                            resume_data["education"] = new_education
                             st.session_state.resume_data = copy.deepcopy(resume_data)
                             st.success("Deleted selected education entries.")
                             st.rerun()
@@ -1133,7 +1251,16 @@ elif page == "JD-Resume Regeneration":
                 gb_cert = GridOptionsBuilder.from_dataframe(cert_df)
                 gb_cert.configure_selection('multiple', use_checkbox=True)
                 for col in cert_df.columns:
-                    gb_cert.configure_column(col, editable=True, cellStyle={"whiteSpace": "normal", "wordBreak": "break-word"}, tooltipField=col, resizable=True, flex=1)
+                    gb_cert.configure_column(
+                        col, 
+                        editable=True, 
+                        cellStyle={"whiteSpace": "normal", "wordBreak": "break-word"}, 
+                        cellEditor="agTextAreaCellEditor",
+                        cellEditorParams={"maxLength": 500, "rows": 3, "cols": 50},
+                        tooltipField=col, 
+                        resizable=True, 
+                        flex=1
+                    )
                 gb_cert.configure_grid_options(rowDragManaged=True, rowHeight=100)
                 gridOptions_cert = gb_cert.build()
                 cert_response = AgGrid(
@@ -1146,6 +1273,24 @@ elif page == "JD-Resume Regeneration":
                     fit_columns_on_grid_load=True,
                     key="aggrid_cert_single"
                 )
+                # Sync current AG-Grid data with session state
+                current_cert_data = pd.DataFrame(cert_response["data"])
+                current_certifications = []
+                for _, row in current_cert_data.iterrows():
+                    title = str(row['Title']) if row['Title'] else ""
+                    issuer = str(row['Issuer']) if row['Issuer'] else ""
+                    year = str(row['Year']) if row['Year'] else ""
+                    link = str(row['link']) if row['link'] else ""
+                    if title.strip() or issuer.strip():
+                        current_certifications.append({
+                            "title": title,
+                            "issuer": issuer,
+                            "year": year,
+                            "link": link
+                        })
+                resume_data["certifications"] = current_certifications
+                st.session_state.resume_data = copy.deepcopy(resume_data)
+                
                 col_c1, col_c2 = st.columns([1,1])
                 with col_c1:
                     if st.button("➕ Add Certification", key="add_cert_single"):
@@ -1157,11 +1302,25 @@ elif page == "JD-Resume Regeneration":
                     if st.button("🗑️ Delete Checked Certifications", key="del_cert_single"):
                         selected_rows = cert_response['selected_rows']
                         if not selected_rows.empty:
-                            selected_set = set((row['Title'], row['Issuer'], row['Year'], row['link']) for _, row in selected_rows.iterrows())
-                            resume_data["certifications"] = [
-                                row for row in resume_data["certifications"]
-                                if (row.get("title", ""), row.get("issuer", ""), row.get("year", ""), row.get("link", "")) not in selected_set
-                            ]
+                            # Use current AG-Grid data for deletion
+                            current_df = pd.DataFrame(cert_response["data"])
+                            selected_indices = selected_rows.index.tolist()
+                            remaining_df = current_df.drop(selected_indices)
+                            # Convert back to session state format
+                            new_certifications = []
+                            for _, row in remaining_df.iterrows():
+                                title = str(row['Title']) if row['Title'] else ""
+                                issuer = str(row['Issuer']) if row['Issuer'] else ""
+                                year = str(row['Year']) if row['Year'] else ""
+                                link = str(row['link']) if row['link'] else ""
+                                if title.strip() or issuer.strip():
+                                    new_certifications.append({
+                                        "title": title,
+                                        "issuer": issuer,
+                                        "year": year,
+                                        "link": link
+                                    })
+                            resume_data["certifications"] = new_certifications
                             st.session_state.resume_data = copy.deepcopy(resume_data)
                             st.success("Deleted selected certifications.")
                             st.rerun()
@@ -1178,11 +1337,7 @@ elif page == "JD-Resume Regeneration":
                     entry.setdefault("link", "")
                     return entry
                 proj_list = [normalize_proj(p) for p in proj_list]
-                proj_list = [
-                    {**proj, 'description': '\n'.join([s.strip() for s in proj.get('description', '').split('.') if s.strip()]) + ('.' if proj.get('description', '').strip().endswith('.') else '')}
-                    if 'description' in proj else proj
-                    for proj in proj_list
-                ]
+                # Don't modify the description - keep it as is from retailoring
                 if len(proj_list) == 0:
                     proj_df = pd.DataFrame(columns=["Title", "Description", "link"])
                 else:
@@ -1192,9 +1347,28 @@ elif page == "JD-Resume Regeneration":
                 gb_proj.configure_selection('multiple', use_checkbox=True)
                 for col in proj_df.columns:
                     if col == "Description":
-                        gb_proj.configure_column(col, editable=True, cellStyle={"whiteSpace": "pre-line", "wordBreak": "break-word"}, tooltipField=col, resizable=True, flex=2, minWidth=600)
+                        gb_proj.configure_column(
+                            col, 
+                            editable=True, 
+                            cellStyle={"whiteSpace": "pre-line", "wordBreak": "break-word"}, 
+                            cellEditor="agLargeTextCellEditor",
+                            cellEditorParams={"maxLength": 2000, "rows": 8, "cols": 80},
+                            tooltipField=col, 
+                            resizable=True, 
+                            flex=2, 
+                            minWidth=600
+                        )
                     else:
-                        gb_proj.configure_column(col, editable=True, cellStyle={"whiteSpace": "normal", "wordBreak": "break-word"}, tooltipField=col, resizable=True, flex=1)
+                        gb_proj.configure_column(
+                            col, 
+                            editable=True, 
+                            cellStyle={"whiteSpace": "normal", "wordBreak": "break-word"}, 
+                            cellEditor="agTextAreaCellEditor",
+                            cellEditorParams={"maxLength": 500, "rows": 2, "cols": 50},
+                            tooltipField=col, 
+                            resizable=True, 
+                            flex=1
+                        )
                 gb_proj.configure_grid_options(rowDragManaged=True, rowHeight=200)
                 gridOptions_proj = gb_proj.build()
                 proj_response = AgGrid(
@@ -1207,6 +1381,22 @@ elif page == "JD-Resume Regeneration":
                     fit_columns_on_grid_load=True,
                     key="aggrid_proj_single"
                 )
+                # Sync current AG-Grid data with session state
+                current_proj_data = pd.DataFrame(proj_response["data"])
+                current_projects = []
+                for _, row in current_proj_data.iterrows():
+                    title = str(row['Title']) if row['Title'] else ""
+                    description = str(row['Description']) if row['Description'] else ""
+                    link = str(row['link']) if row['link'] else ""
+                    if title.strip() or description.strip():
+                        current_projects.append({
+                            "title": title,
+                            "description": description,
+                            "link": link
+                        })
+                resume_data["projects"] = current_projects
+                st.session_state.resume_data = copy.deepcopy(resume_data)
+                
                 col_p1, col_p2 = st.columns([1,1])
                 with col_p1:
                     if st.button("➕ Add Project", key="add_proj_single"):
@@ -1218,11 +1408,23 @@ elif page == "JD-Resume Regeneration":
                     if st.button("🗑️ Delete Checked Projects", key="del_proj_single"):
                         selected_rows = proj_response['selected_rows']
                         if not selected_rows.empty:
-                            selected_set = set((row['Title'], row['Description'], row['link']) for _, row in selected_rows.iterrows())
-                            resume_data["projects"] = [
-                                row for row in resume_data["projects"]
-                                if (row.get("title", ""), row.get("description", ""), row.get("link", "")) not in selected_set
-                            ]
+                            # Use current AG-Grid data for deletion
+                            current_df = pd.DataFrame(proj_response["data"])
+                            selected_indices = selected_rows.index.tolist()
+                            remaining_df = current_df.drop(selected_indices)
+                            # Convert back to session state format
+                            new_projects = []
+                            for _, row in remaining_df.iterrows():
+                                title = str(row['Title']) if row['Title'] else ""
+                                description = str(row['Description']) if row['Description'] else ""
+                                link = str(row['link']) if row['link'] else ""
+                                if title.strip() or description.strip():
+                                    new_projects.append({
+                                        "title": title,
+                                        "description": description,
+                                        "link": link
+                                    })
+                            resume_data["projects"] = new_projects
                             st.session_state.resume_data = copy.deepcopy(resume_data)
                             st.success("Deleted selected projects.")
                             st.rerun()
@@ -1240,7 +1442,14 @@ elif page == "JD-Resume Regeneration":
                 gb_skill = GridOptionsBuilder.from_dataframe(skill_df)
                 gb_skill.configure_selection('multiple', use_checkbox=True)
                 for col in skill_df.columns:
-                    gb_skill.configure_column(col, editable=True, resizable=True, flex=1)
+                    gb_skill.configure_column(
+                        col, 
+                        editable=True, 
+                        cellEditor="agTextCellEditor",
+                        cellEditorParams={"maxLength": 100},
+                        resizable=True, 
+                        flex=1
+                    )
                 gb_skill.configure_grid_options(rowDragManaged=True, rowHeight=25)
                 gridOptions_skill = gb_skill.build()
                 skill_response = AgGrid(
@@ -1253,6 +1462,12 @@ elif page == "JD-Resume Regeneration":
                     fit_columns_on_grid_load=True,
                     key="aggrid_skill_single"
                 )
+                # Sync current AG-Grid data with session state
+                current_skill_data = pd.DataFrame(skill_response["data"])
+                current_skills = [str(row['Skill']).strip() for _, row in current_skill_data.iterrows() if str(row['Skill']).strip()]
+                resume_data["skills"] = current_skills
+                st.session_state.resume_data = copy.deepcopy(resume_data)
+                
                 col_s1, col_s2 = st.columns([1,1])
                 with col_s1:
                     if st.button("➕ Add Skill", key="add_skill_single"):
@@ -1264,11 +1479,13 @@ elif page == "JD-Resume Regeneration":
                     if st.button("🗑️ Delete Checked Skills", key="del_skill_single"):
                         selected_rows = skill_response['selected_rows']
                         if not selected_rows.empty:
-                            selected_set = set(row['Skill'] for _, row in selected_rows.iterrows())
-                            resume_data["skills"] = [
-                                s for s in resume_data["skills"]
-                                if str(s) not in selected_set
-                            ]
+                            # Use current AG-Grid data for deletion
+                            current_df = pd.DataFrame(skill_response["data"])
+                            selected_indices = selected_rows.index.tolist()
+                            remaining_df = current_df.drop(selected_indices)
+                            # Convert back to session state format
+                            new_skills = [str(row['Skill']).strip() for _, row in remaining_df.iterrows() if str(row['Skill']).strip()]
+                            resume_data["skills"] = new_skills
                             st.session_state.resume_data = copy.deepcopy(resume_data)
                             st.success("Deleted selected skills.")
                             st.rerun()
@@ -1346,54 +1563,53 @@ elif page == "JD-Resume Regeneration":
                         st.session_state.pdf_ready_single = True
                         st.success("PDF generated successfully!")
 
-                    # --- After PDF generation for single candidate ---
-                    if st.session_state.get("pdf_ready_single", False):
-                        st.markdown("### 📄 Generated PDF Preview")
-                        pdf_b64 = st.session_state.generated_pdf_b64
-                        st.info("If the PDF is not viewable above, your browser may not support embedded PDF viewing.")
-                        link_id = f"open_pdf_link_{uuid.uuid4().hex}"
-                        components.html(f"""
-                            <a id=\"{link_id}\" style=\"margin:10px 0;display:inline-block;padding:8px 16px;font-size:16px;border-radius:5px;background:#0068c9;color:white;text-decoration:none;border:none;cursor:pointer;\">
-                                🔗 Click here to open the PDF in a new tab
-                            </a>
-                            <script>
-                            const b64Data = \"{pdf_b64}\";
-                            const byteCharacters = atob(b64Data);
-                            const byteNumbers = new Array(byteCharacters.length);
-                            for (let i = 0; i < byteCharacters.length; i++) {{
-                                byteNumbers[i] = byteCharacters.charCodeAt(i);
-                            }}
-                            const byteArray = new Uint8Array(byteNumbers);
-                            const blob = new Blob([byteArray], {{type: \"application/pdf\"}});
-                            const blobUrl = URL.createObjectURL(blob);
-                            const link = document.getElementById(\"{link_id}\");
-                            link.href = blobUrl;
-                            link.target = \"_blank\";
-                            link.rel = \"noopener noreferrer\";
-                            link.onclick = function() {{
-                                setTimeout(function(){{URL.revokeObjectURL(blobUrl)}}, 10000);
-                            }};
-                            </script>
-                        """, height=80)
-                        st.download_button(
-                            "📄 Download PDF",
-                            data=st.session_state.generated_pdf,
-                            file_name=f"{st.session_state.resume_data.get('name', 'resume').replace(' ', '_')}.pdf",
-                            mime="application/pdf",
-                            key="pdf_download_single"
-                        )
-                        keywords = st.session_state.get('extracted_keywords', None)
-                        word_file = DocxUtils.generate_docx(st.session_state.resume_data, keywords=keywords)
-                        st.download_button(
-                            "📝 Download Word",
-                            data=word_file,
-                            file_name=f"{st.session_state.resume_data.get('name', 'resume').replace(' ', '_')}.docx",
-                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                            key="word_download_single"
-                        )
+                # --- PDF Preview Section (Outside button click for persistent display) ---
+                if st.session_state.get("pdf_ready_single", False):
+                    st.markdown("### 📄 Generated PDF Preview")
+                    pdf_b64 = st.session_state.generated_pdf_b64
+                    st.info("If the PDF is not viewable above, your browser may not support embedded PDF viewing.")
+                    link_id = f"open_pdf_link_{uuid.uuid4().hex}"
+                    components.html(f"""
+                        <a id=\"{link_id}\" style=\"margin:10px 0;display:inline-block;padding:8px 16px;font-size:16px;border-radius:5px;background:#0068c9;color:white;text-decoration:none;border:none;cursor:pointer;\">
+                            🔗 Click here to open the PDF in a new tab
+                        </a>
+                        <script>
+                        const b64Data = \"{pdf_b64}\";
+                        const byteCharacters = atob(b64Data);
+                        const byteNumbers = new Array(byteCharacters.length);
+                        for (let i = 0; i < byteCharacters.length; i++) {{
+                            byteNumbers[i] = byteCharacters.charCodeAt(i);
+                        }}
+                        const byteArray = new Uint8Array(byteNumbers);
+                        const blob = new Blob([byteArray], {{type: \"application/pdf\"}});
+                        const blobUrl = URL.createObjectURL(blob);
+                        const link = document.getElementById(\"{link_id}\");
+                        link.href = blobUrl;
+                        link.target = \"_blank\";
+                        link.rel = \"noopener noreferrer\";
+                        link.onclick = function() {{
+                            setTimeout(function(){{URL.revokeObjectURL(blobUrl)}}, 10000);
+                        }};
+                        </script>
+                    """, height=80)
+                    st.download_button(
+                        "📄 Download PDF",
+                        data=st.session_state.generated_pdf,
+                        file_name=f"{st.session_state.resume_data.get('name', 'resume').replace(' ', '_')}.pdf",
+                        mime="application/pdf",
+                        key="pdf_download_single"
+                    )
+                    keywords = st.session_state.get('extracted_keywords', None)
+                    word_file = DocxUtils.generate_docx(st.session_state.resume_data, keywords=keywords)
+                    st.download_button(
+                        "📝 Download Word",
+                        data=word_file,
+                        file_name=f"{st.session_state.resume_data.get('name', 'resume').replace(' ', '_')}.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        key="word_download_single"
+                    )
 
-                        # Candidate Pitch Summary only after PDF is generated
-                        
+                # Candidate Pitch Summary
                 st.markdown("### 📝 Candidate Pitch Summary")
                 col1, col2 = st.columns([1, 8])
                 with col1:
