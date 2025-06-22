@@ -243,6 +243,16 @@ if 'summary_generation_complete' not in st.session_state:
     st.session_state['summary_generation_complete'] = False
 
 # After other session state initializations near the top of the script:
+if 'aggrid_key_suffixes_bulk' not in st.session_state:
+    st.session_state['aggrid_key_suffixes_bulk'] = {}
+if 'aggrid_edu_single_key_suffix' not in st.session_state:
+    st.session_state['aggrid_edu_single_key_suffix'] = 0
+if 'aggrid_cert_single_key_suffix' not in st.session_state:
+    st.session_state['aggrid_cert_single_key_suffix'] = 0
+if 'aggrid_proj_single_key_suffix' not in st.session_state:
+    st.session_state['aggrid_proj_single_key_suffix'] = 0
+if 'aggrid_skill_single_key_suffix' not in st.session_state:
+    st.session_state['aggrid_skill_single_key_suffix'] = 0
 if 'resume_data' not in st.session_state:
     st.session_state.resume_data = None
 
@@ -690,6 +700,7 @@ elif page == "JD-Resume Regeneration":
                                 )
                             gb_edu.configure_grid_options(rowDragManaged=True, rowHeight=100)
                             gridOptions_edu = gb_edu.build()
+                            edu_key_suffix = st.session_state.aggrid_key_suffixes_bulk.get(cand['mongo_id'], {}).get('edu', 0)
                             edu_response = AgGrid(
                                 edu_df,
                                 gridOptions=gridOptions_edu,
@@ -698,57 +709,45 @@ elif page == "JD-Resume Regeneration":
                                 theme="streamlit",
                                 height=300,
                                 fit_columns_on_grid_load=True,
-                                key=f"aggrid_edu_bulk_{cand['mongo_id']}"
+                                key=f"aggrid_edu_bulk_{cand['mongo_id']}_{edu_key_suffix}"
                             )
                             # Sync current AG-Grid data with session state immediately
                             current_edu_data = pd.DataFrame(edu_response["data"])
-                            current_education = []
-                            for _, row in current_edu_data.iterrows():
-                                institution = str(row['Institution']) if row['Institution'] else ""
-                                degree = str(row['Degree']) if row['Degree'] else ""
-                                year = str(row['Year']) if row['Year'] else ""
-                                if institution.strip() or degree.strip() or year.strip():
-                                    current_education.append({
-                                        "institution": institution,
-                                        "degree": degree,
-                                        "year": year
-                                    })
-                            resume_data["education"] = current_education
-                            st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
-                            updated_edu_df = pd.DataFrame(edu_response["data"])
-                            col_e1, col_e2 = st.columns([1,1])
-                            with col_e1:
-                                if st.button("➕ Add Education", key=f"add_edu_bulk_{cand['mongo_id']}", type="secondary"):
-                                    resume_data["education"].append({"institution": "", "degree": "", "year": ""})
-                                    st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
-                                    st.markdown('<div class="success-message">✅ Added new education entry! Click to edit and fill in details.</div>', unsafe_allow_html=True)
-                                    st.rerun()
-                            with col_e2:
-                                if st.button("🗑️ Delete Checked Education", key=f"del_edu_bulk_{cand['mongo_id']}", type="secondary"):
-                                    selected_rows = edu_response['selected_rows']
-                                    if not selected_rows.empty:
-                                        # Use current AG-Grid data for deletion
-                                        current_df = pd.DataFrame(edu_response["data"])
-                                        selected_indices = selected_rows.index.tolist()
-                                        remaining_df = current_df.drop(selected_indices)
-                                        # Convert back to session state format
-                                        new_education = []
-                                        for _, row in remaining_df.iterrows():
-                                            institution = str(row['Institution']) if row['Institution'] else ""
-                                            degree = str(row['Degree']) if row['Degree'] else ""
-                                            year = str(row['Year']) if row['Year'] else ""
-                                            if institution.strip() or degree.strip() or year.strip():
-                                                new_education.append({
-                                                    "institution": institution,
-                                                    "degree": degree,
-                                                    "year": year
-                                                })
-                                        resume_data["education"] = new_education
-                                        st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
-                                        st.markdown(f'<div class="success-message">✅ Deleted {len(selected_indices)} education entries successfully!</div>', unsafe_allow_html=True)
-                                        st.rerun()
-                                    else:
-                                        st.markdown('<div class="warning-box">⚠️ Please select rows using checkboxes before deleting.</div>', unsafe_allow_html=True)
+                            # Check for deleted rows
+                            selected_rows = edu_response['selected_rows']
+                            if selected_rows is not None and not selected_rows.empty:
+                                current_df = pd.DataFrame(edu_response["data"])
+                                indices_to_drop = selected_rows.index.tolist()
+                                remaining_df = current_df.drop(indices_to_drop)
+                                # Convert back to session state format
+                                new_education = []
+                                for _, row in remaining_df.iterrows():
+                                    institution = str(row['Institution']) if 'Institution' in row else ""
+                                    degree = str(row['Degree']) if 'Degree' in row else ""
+                                    year = str(row['Year']) if 'Year' in row else ""
+                                    if institution.strip() or degree.strip() or year.strip():
+                                        new_education.append({"institution": institution, "degree": degree, "year": year})
+                                resume_data["education"] = new_education
+                                st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
+                                st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']]['edu'] += 1
+                                st.success(f"Deleted {len(indices_to_drop)} education entries.")
+                                st.rerun()
+                            else: # If no rows are deleted, sync any edits
+                                current_education = []
+                                for _, row in current_edu_data.iterrows():
+                                    institution = str(row['Institution']) if 'Institution' in row else ""
+                                    degree = str(row['Degree']) if 'Degree' in row else ""
+                                    year = str(row['Year']) if 'Year' in row else ""
+                                    if institution.strip() or degree.strip() or year.strip():
+                                        current_education.append({"institution": institution, "degree": degree, "year": year})
+                                resume_data["education"] = current_education
+                                st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
+
+                            if st.button("➕ Add Education", key=f"add_edu_bulk_{cand['mongo_id']}", type="secondary"):
+                                resume_data["education"].append({"institution": "", "degree": "", "year": ""})
+                                st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
+                                st.markdown('<div class="success-message">✅ Added new education entry! Click to edit and fill in details.</div>', unsafe_allow_html=True)
+                                st.rerun()
                             st.markdown("---")
 
                             # --- Certifications Section ---
@@ -784,6 +783,7 @@ elif page == "JD-Resume Regeneration":
                                 )
                             gb_cert.configure_grid_options(rowDragManaged=True, rowHeight=100)
                             gridOptions_cert = gb_cert.build()
+                            cert_key_suffix = st.session_state.aggrid_key_suffixes_bulk.get(cand['mongo_id'], {}).get('cert', 0)
                             cert_response = AgGrid(
                                 cert_df,
                                 gridOptions=gridOptions_cert,
@@ -792,61 +792,47 @@ elif page == "JD-Resume Regeneration":
                                 theme="streamlit",
                                 height=300,
                                 fit_columns_on_grid_load=True,
-                                key=f"aggrid_cert_bulk_{cand['mongo_id']}"
+                                key=f"aggrid_cert_bulk_{cand['mongo_id']}_{cert_key_suffix}"
                             )
                             # Sync current AG-Grid data with session state immediately
                             current_cert_data = pd.DataFrame(cert_response["data"])
-                            current_certifications = []
-                            for _, row in current_cert_data.iterrows():
-                                title = str(row['Title']) if row['Title'] else ""
-                                issuer = str(row['Issuer']) if row['Issuer'] else ""
-                                year = str(row['Year']) if row['Year'] else ""
-                                link = str(row['link']) if row['link'] else ""
-                                if title.strip() or issuer.strip():
-                                    current_certifications.append({
-                                        "title": title,
-                                        "issuer": issuer,
-                                        "year": year,
-                                        "link": link
-                                    })
-                            resume_data["certifications"] = current_certifications
-                            st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
-                            updated_cert_df = pd.DataFrame(cert_response["data"])
-                            col_c1, col_c2 = st.columns([1,1])
-                            with col_c1:
-                                if st.button("➕ Add Certification", key=f"add_cert_bulk_{cand['mongo_id']}"):
-                                    resume_data["certifications"].append({"title": "", "issuer": "", "year": "", "link": ""})
-                                    st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
-                                    st.success("Added new certification entry.")
-                                    st.rerun()
-                            with col_c2:
-                                if st.button("🗑️ Delete Checked Certifications", key=f"del_cert_bulk_{cand['mongo_id']}"):
-                                    selected_rows = cert_response['selected_rows']
-                                    if not selected_rows.empty:
-                                        # Use current AG-Grid data for deletion
-                                        current_df = pd.DataFrame(cert_response["data"])
-                                        selected_indices = selected_rows.index.tolist()
-                                        remaining_df = current_df.drop(selected_indices)
-                                        # Convert back to session state format
-                                        new_certifications = []
-                                        for _, row in remaining_df.iterrows():
-                                            title = str(row['Title']) if row['Title'] else ""
-                                            issuer = str(row['Issuer']) if row['Issuer'] else ""
-                                            year = str(row['Year']) if row['Year'] else ""
-                                            link = str(row['link']) if row['link'] else ""
-                                            if title.strip() or issuer.strip():
-                                                new_certifications.append({
-                                                    "title": title,
-                                                    "issuer": issuer,
-                                                    "year": year,
-                                                    "link": link
-                                                })
-                                        resume_data["certifications"] = new_certifications
-                                        st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
-                                        st.success("Deleted selected certifications.")
-                                        st.rerun()
-                                    else:
-                                        st.error("No rows selected for deletion.")
+                            # Check for deleted rows
+                            selected_rows_cert = cert_response['selected_rows']
+                            if selected_rows_cert is not None and not selected_rows_cert.empty:
+                                current_df = pd.DataFrame(cert_response["data"])
+                                indices_to_drop = selected_rows_cert.index.tolist()
+                                remaining_df = current_df.drop(indices_to_drop)
+                                # Convert back to session state format
+                                new_certifications = []
+                                for _, row in remaining_df.iterrows():
+                                    title = str(row['Title']) if 'Title' in row else ""
+                                    issuer = str(row['Issuer']) if 'Issuer' in row else ""
+                                    year = str(row['Year']) if 'Year' in row else ""
+                                    link = str(row['link']) if 'link' in row else ""
+                                    if title.strip() or issuer.strip():
+                                        new_certifications.append({"title": title, "issuer": issuer, "year": year, "link": link})
+                                resume_data["certifications"] = new_certifications
+                                st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
+                                st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']]['cert'] += 1
+                                st.success("Deleted selected certifications.")
+                                st.rerun()
+                            else: # If no rows are deleted, sync any edits
+                                current_certifications = []
+                                for _, row in current_cert_data.iterrows():
+                                    title = str(row['Title']) if 'Title' in row else ""
+                                    issuer = str(row['Issuer']) if 'Issuer' in row else ""
+                                    year = str(row['Year']) if 'Year' in row else ""
+                                    link = str(row['link']) if 'link' in row else ""
+                                    if title.strip() or issuer.strip():
+                                        current_certifications.append({"title": title, "issuer": issuer, "year": year, "link": link})
+                                resume_data["certifications"] = current_certifications
+                                st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
+                            
+                            if st.button("➕ Add Certification", key=f"add_cert_bulk_{cand['mongo_id']}"):
+                                resume_data["certifications"].append({"title": "", "issuer": "", "year": "", "link": ""})
+                                st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
+                                st.success("Added new certification entry.")
+                                st.rerun()
                             st.markdown("---")
 
                             # --- Projects Section ---
@@ -893,6 +879,7 @@ elif page == "JD-Resume Regeneration":
                                     )
                             gb_proj.configure_grid_options(rowDragManaged=True, rowHeight=200)
                             gridOptions_proj = gb_proj.build()
+                            proj_key_suffix = st.session_state.aggrid_key_suffixes_bulk.get(cand['mongo_id'], {}).get('proj', 0)
                             proj_response = AgGrid(
                                 proj_df,
                                 gridOptions=gridOptions_proj,
@@ -901,57 +888,45 @@ elif page == "JD-Resume Regeneration":
                                 theme="streamlit",
                                 height=400,
                                 fit_columns_on_grid_load=True,
-                                key=f"aggrid_proj_bulk_{cand['mongo_id']}"
+                                key=f"aggrid_proj_bulk_{cand['mongo_id']}_{proj_key_suffix}"
                             )
                             # Sync current AG-Grid data with session state immediately
                             current_proj_data = pd.DataFrame(proj_response["data"])
-                            current_projects = []
-                            for _, row in current_proj_data.iterrows():
-                                title = str(row['Title']) if row['Title'] else ""
-                                description = str(row['Description']) if row['Description'] else ""
-                                link = str(row['link']) if row['link'] else ""
-                                if title.strip() or description.strip():
-                                    current_projects.append({
-                                        "title": title,
-                                        "description": description,
-                                        "link": link
-                                    })
-                            resume_data["projects"] = current_projects
-                            st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
-                            updated_proj_df = pd.DataFrame(proj_response["data"])
-                            col_p1, col_p2 = st.columns([1,1])
-                            with col_p1:
-                                if st.button("➕ Add Project", key=f"add_proj_bulk_{cand['mongo_id']}"):
-                                    resume_data["projects"].append({"title": "", "description": "", "link": ""})
-                                    st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
-                                    st.success("Added new project entry.")
-                                    st.rerun()
-                            with col_p2:
-                                if st.button("🗑️ Delete Checked Projects", key=f"del_proj_bulk_{cand['mongo_id']}"):
-                                    selected_rows = proj_response['selected_rows']
-                                    if not selected_rows.empty:
-                                        # Use current AG-Grid data for deletion
-                                        current_df = pd.DataFrame(proj_response["data"])
-                                        selected_indices = selected_rows.index.tolist()
-                                        remaining_df = current_df.drop(selected_indices)
-                                        # Convert back to session state format
-                                        new_projects = []
-                                        for _, row in remaining_df.iterrows():
-                                            title = str(row['Title']) if row['Title'] else ""
-                                            description = str(row['Description']) if row['Description'] else ""
-                                            link = str(row['link']) if row['link'] else ""
-                                            if title.strip() or description.strip():
-                                                new_projects.append({
-                                                    "title": title,
-                                                    "description": description,
-                                                    "link": link
-                                                })
-                                        resume_data["projects"] = new_projects
-                                        st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
-                                        st.success("Deleted selected projects.")
-                                        st.rerun()
-                                    else:
-                                        st.error("No rows selected for deletion.")
+                            # Check for deleted rows
+                            selected_rows_proj = proj_response['selected_rows']
+                            if selected_rows_proj is not None and not selected_rows_proj.empty:
+                                current_df = pd.DataFrame(proj_response["data"])
+                                indices_to_drop = selected_rows_proj.index.tolist()
+                                remaining_df = current_df.drop(indices_to_drop)
+                                # Convert back to session state format
+                                new_projects = []
+                                for _, row in remaining_df.iterrows():
+                                    title = str(row['Title']) if 'Title' in row else ""
+                                    description = str(row['Description']) if 'Description' in row else ""
+                                    link = str(row['link']) if 'link' in row else ""
+                                    if title.strip() or description.strip():
+                                        new_projects.append({"title": title, "description": description, "link": link})
+                                resume_data["projects"] = new_projects
+                                st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
+                                st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']]['proj'] += 1
+                                st.success("Deleted selected projects.")
+                                st.rerun()
+                            else: # If no rows are deleted, sync any edits
+                                current_projects = []
+                                for _, row in current_proj_data.iterrows():
+                                    title = str(row['Title']) if 'Title' in row else ""
+                                    description = str(row['Description']) if 'Description' in row else ""
+                                    link = str(row['link']) if 'link' in row else ""
+                                    if title.strip() or description.strip():
+                                        current_projects.append({"title": title, "description": description, "link": link})
+                                resume_data["projects"] = current_projects
+                                st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
+
+                            if st.button("➕ Add Project", key=f"add_proj_bulk_{cand['mongo_id']}"):
+                                resume_data["projects"].append({"title": "", "description": "", "link": ""})
+                                st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
+                                st.success("Added new project entry.")
+                                st.rerun()
                             st.markdown("---")
 
                             # --- Skills Section ---
@@ -975,6 +950,7 @@ elif page == "JD-Resume Regeneration":
                                 )
                             gb_skill.configure_grid_options(rowDragManaged=True, rowHeight=25)
                             gridOptions_skill = gb_skill.build()
+                            skill_key_suffix = st.session_state.aggrid_key_suffixes_bulk.get(cand['mongo_id'], {}).get('skill', 0)
                             skill_response = AgGrid(
                                 skill_df,
                                 gridOptions=gridOptions_skill,
@@ -983,103 +959,96 @@ elif page == "JD-Resume Regeneration":
                                 theme="streamlit",
                                 height=300,
                                 fit_columns_on_grid_load=True,
-                                key=f"aggrid_skill_bulk_{cand['mongo_id']}"
+                                key=f"aggrid_skill_bulk_{cand['mongo_id']}_{skill_key_suffix}"
                             )
                             # Sync current AG-Grid data with session state immediately
                             current_skill_data = pd.DataFrame(skill_response["data"])
-                            current_skills = [str(row['Skill']).strip() for _, row in current_skill_data.iterrows() if str(row['Skill']).strip()]
-                            resume_data["skills"] = current_skills
-                            st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
-                            updated_skill_df = pd.DataFrame(skill_response["data"])
-                            col_s1, col_s2 = st.columns([1,1])
-                            with col_s1:
-                                if st.button("➕ Add Skill", key=f"add_skill_bulk_{cand['mongo_id']}"):
-                                    resume_data["skills"].append("")
-                                    st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
-                                    st.success("Added new skill entry.")
-                                    st.rerun()
-                            with col_s2:
-                                if st.button("🗑️ Delete Checked Skills", key=f"del_skill_bulk_{cand['mongo_id']}"):
-                                    selected_rows = skill_response['selected_rows']
-                                    if not selected_rows.empty:
-                                        # Use current AG-Grid data for deletion
-                                        current_df = pd.DataFrame(skill_response["data"])
-                                        selected_indices = selected_rows.index.tolist()
-                                        remaining_df = current_df.drop(selected_indices)
-                                        # Convert back to session state format
-                                        new_skills = [str(row['Skill']).strip() for _, row in remaining_df.iterrows() if str(row['Skill']).strip()]
-                                        resume_data["skills"] = new_skills
-                                        st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
-                                        st.success("Deleted selected skills.")
-                                        st.rerun()
-                                    else:
-                                        st.error("No rows selected for deletion.")
+                            # Check for deleted rows
+                            selected_rows_skill = skill_response['selected_rows']
+                            if selected_rows_skill is not None and not selected_rows_skill.empty:
+                                current_df = pd.DataFrame(skill_response["data"])
+                                indices_to_drop = selected_rows_skill.index.tolist()
+                                remaining_df = current_df.drop(indices_to_drop)
+                                # Convert back to session state format
+                                new_skills = [str(row['Skill']).strip() for _, row in remaining_df.iterrows() if 'Skill' in row and str(row['Skill']).strip()]
+                                resume_data["skills"] = new_skills
+                                st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
+                                st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']]['skill'] += 1
+                                st.success("Deleted selected skills.")
+                                st.rerun()
+                            else: # If no rows are deleted, sync any edits
+                                current_skills = [str(row['Skill']).strip() for _, row in current_skill_data.iterrows() if 'Skill' in row and str(row['Skill']).strip()]
+                                resume_data["skills"] = current_skills
+                                st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
+
+                            if st.button("➕ Add Skill", key=f"add_skill_bulk_{cand['mongo_id']}"):
+                                resume_data["skills"].append("")
+                                st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
+                                st.success("Added new skill entry.")
+                                st.rerun()
                             st.markdown("---")
 
                             # Generate PDF button
                             if st.button("🔄 Update and Generate New PDF", key=f"update_pdf_bulk_{cand['mongo_id']}"):
-                                # Sync current AgGrid data with resume_data before PDF generation
-                                # Update skills from AgGrid
-                                current_skills = [row['Skill'] for _, row in updated_skill_df.iterrows() if row['Skill'] and str(row['Skill']).strip()]
-                                resume_data["skills"] = current_skills
-                                
-                                # Update education from AgGrid
-                                updated_edu_df = pd.DataFrame(edu_response["data"])
-                                current_education = []
-                                for _, row in updated_edu_df.iterrows():
-                                    institution = str(row['Institution']) if row['Institution'] else ""
-                                    degree = str(row['Degree']) if row['Degree'] else ""
-                                    year = str(row['Year']) if row['Year'] else ""
+                                # Create a fresh copy of data to sync
+                                synced_data = copy.deepcopy(st.session_state[f'resume_data_{cand["mongo_id"]}'])
+
+                                # Sync simple text inputs
+                                synced_data["name"] = resume_data["name"]
+                                synced_data["title"] = resume_data["title"]
+                                synced_data["summary"] = resume_data["summary"]
+
+                                # Sync Education from AgGrid
+                                edu_df = pd.DataFrame(edu_response["data"])
+                                synced_education = []
+                                for _, row in edu_df.iterrows():
+                                    institution = str(row['Institution']) if 'Institution' in row else ""
+                                    degree = str(row['Degree']) if 'Degree' in row else ""
+                                    year = str(row['Year']) if 'Year' in row else ""
                                     if institution.strip() or degree.strip() or year.strip():
-                                        current_education.append({
-                                            "institution": institution,
-                                            "degree": degree,
-                                            "year": year
-                                        })
-                                resume_data["education"] = current_education
+                                        synced_education.append({"institution": institution, "degree": degree, "year": year})
+                                synced_data["education"] = synced_education
                                 
-                                # Update certifications from AgGrid
-                                updated_cert_df = pd.DataFrame(cert_response["data"])
-                                current_certifications = []
-                                for _, row in updated_cert_df.iterrows():
-                                    title = str(row['Title']) if row['Title'] else ""
-                                    issuer = str(row['Issuer']) if row['Issuer'] else ""
-                                    year = str(row['Year']) if row['Year'] else ""
-                                    link = str(row['link']) if row['link'] else ""
+                                # Sync Certifications from AgGrid
+                                cert_df = pd.DataFrame(cert_response["data"])
+                                synced_certifications = []
+                                for _, row in cert_df.iterrows():
+                                    title = str(row['Title']) if 'Title' in row else ""
+                                    issuer = str(row['Issuer']) if 'Issuer' in row else ""
+                                    year = str(row['Year']) if 'Year' in row else ""
+                                    link = str(row['link']) if 'link' in row else ""
                                     if title.strip() or issuer.strip():
-                                        current_certifications.append({
-                                            "title": title,
-                                            "issuer": issuer,
-                                            "year": year,
-                                            "link": link
-                                        })
-                                resume_data["certifications"] = current_certifications
+                                        synced_certifications.append({"title": title, "issuer": issuer, "year": year, "link": link})
+                                synced_data["certifications"] = synced_certifications
                                 
-                                # Update projects from AgGrid
-                                updated_proj_df = pd.DataFrame(proj_response["data"])
-                                current_projects = []
-                                for _, row in updated_proj_df.iterrows():
-                                    title = str(row['Title']) if row['Title'] else ""
-                                    description = str(row['Description']) if row['Description'] else ""
-                                    link = str(row['link']) if row['link'] else ""
+                                # Sync Projects from AgGrid
+                                proj_df = pd.DataFrame(proj_response["data"])
+                                synced_projects = []
+                                for _, row in proj_df.iterrows():
+                                    title = str(row['Title']) if 'Title' in row else ""
+                                    description = str(row['Description']) if 'Description' in row else ""
+                                    link = str(row['link']) if 'link' in row else ""
                                     if title.strip() or description.strip():
-                                        current_projects.append({
-                                            "title": title,
-                                            "description": description,
-                                            "link": link
-                                        })
-                                resume_data["projects"] = current_projects
+                                        synced_projects.append({"title": title, "description": description, "link": link})
+                                synced_data["projects"] = synced_projects
+
+                                # Sync Skills from AgGrid
+                                skill_df = pd.DataFrame(skill_response["data"])
+                                synced_skills = [str(row['Skill']).strip() for _, row in skill_df.iterrows() if 'Skill' in row and str(row['Skill']).strip()]
+                                synced_data["skills"] = synced_skills
                                 
-                                # Update session state with synchronized data
-                                st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
+                                # Update session state with the fully synchronized data
+                                st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(synced_data)
                                 st.session_state[f'pdf_ready_{cand["mongo_id"]}'] = True
+
                                 with st.spinner("Generating PDF..."):
                                     keywords = st.session_state.get('extracted_keywords', None)
-                                    pdf_file, html_out = PDFUtils.generate_pdf(resume_data, keywords=keywords)
+                                    pdf_file, html_out = PDFUtils.generate_pdf(synced_data, keywords=keywords)
                                     pdf_b64 = PDFUtils.get_base64_pdf(pdf_file)
                                     st.session_state[f'generated_pdf_{cand["mongo_id"]}'] = pdf_file
                                     st.session_state[f'generated_pdf_b64_{cand["mongo_id"]}'] = pdf_b64
                                     st.success("PDF generated successfully!")
+                                    st.rerun()
 
                             # --- PDF Preview Section for bulk candidates (Outside button click) ---
                             if st.session_state.get(f'pdf_ready_{cand["mongo_id"]}', False):
@@ -1088,23 +1057,23 @@ elif page == "JD-Resume Regeneration":
                                 st.info("If the PDF is not viewable above, your browser may not support embedded PDF viewing.")
                                 link_id = f"open_pdf_link_{uuid.uuid4().hex}"
                                 components.html(f"""
-                                    <a id=\"{link_id}\" style=\"margin:10px 0;display:inline-block;padding:8px 16px;font-size:16px;border-radius:5px;background:#0068c9;color:white;text-decoration:none;border:none;cursor:pointer;\">
+                                    <a id="{link_id}" style="margin:10px 0;display:inline-block;padding:8px 16px;font-size:16px;border-radius:5px;background:#0068c9;color:white;text-decoration:none;border:none;cursor:pointer;">
                                         🔗 Click here to open the PDF in a new tab
                                     </a>
                                     <script>
-                                    const b64Data = \"{pdf_b64}\";
+                                    const b64Data = "{pdf_b64}";
                                     const byteCharacters = atob(b64Data);
                                     const byteNumbers = new Array(byteCharacters.length);
                                     for (let i = 0; i < byteCharacters.length; i++) {{
                                         byteNumbers[i] = byteCharacters.charCodeAt(i);
                                     }}
                                     const byteArray = new Uint8Array(byteNumbers);
-                                    const blob = new Blob([byteArray], {{type: \"application/pdf\"}});
+                                    const blob = new Blob([byteArray], {{type: "application/pdf"}});
                                     const blobUrl = URL.createObjectURL(blob);
-                                    const link = document.getElementById(\"{link_id}\");
+                                    const link = document.getElementById("{link_id}");
                                     link.href = blobUrl;
-                                    link.target = \"_blank\";
-                                    link.rel = \"noopener noreferrer\";
+                                    link.target = "_blank";
+                                    link.rel = "noopener noreferrer";
                                     link.onclick = function() {{
                                         setTimeout(function(){{URL.revokeObjectURL(blobUrl)}}, 10000);
                                     }};
@@ -1309,6 +1278,7 @@ elif page == "JD-Resume Regeneration":
                     )
                 gb_edu.configure_grid_options(rowDragManaged=True, rowHeight=100)
                 gridOptions_edu = gb_edu.build()
+                edu_key_suffix = st.session_state.get('aggrid_edu_single_key_suffix', 0)
                 edu_response = AgGrid(
                     edu_df,
                     gridOptions=gridOptions_edu,
@@ -1317,58 +1287,54 @@ elif page == "JD-Resume Regeneration":
                     theme="streamlit",
                     height=300,
                     fit_columns_on_grid_load=True,
-                    key="aggrid_edu_single"
+                    key=f"aggrid_edu_single_{edu_key_suffix}"
                 )
                 # Get current data from AG-Grid and sync with session state immediately
                 current_edu_data = pd.DataFrame(edu_response["data"])
-                current_education = []
-                for _, row in current_edu_data.iterrows():
-                    institution = str(row['Institution']) if row['Institution'] else ""
-                    degree = str(row['Degree']) if row['Degree'] else ""
-                    year = str(row['Year']) if row['Year'] else ""
-                    if institution.strip() or degree.strip() or year.strip():
-                        current_education.append({
-                            "institution": institution,
-                            "degree": degree,
-                            "year": year
-                        })
-                resume_data["education"] = current_education
-                st.session_state.resume_data = copy.deepcopy(resume_data)
+                # Check for deleted rows
+                selected_rows = edu_response['selected_rows']
+                if selected_rows is not None and not selected_rows.empty:
+                    current_df = pd.DataFrame(edu_response["data"])
+                    indices_to_drop = selected_rows.index.tolist()
+                    remaining_df = current_df.drop(indices_to_drop)
+                    
+                    # Convert back to session state format
+                    new_education = []
+                    for _, row in remaining_df.iterrows():
+                        institution = str(row['Institution']) if 'Institution' in row else ""
+                        degree = str(row['Degree']) if 'Degree' in row else ""
+                        year = str(row['Year']) if 'Year' in row else ""
+                        if institution.strip() or degree.strip() or year.strip():
+                            new_education.append({
+                                "institution": institution,
+                                "degree": degree,
+                                "year": year
+                            })
+                    resume_data["education"] = new_education
+                    st.session_state.resume_data = copy.deepcopy(resume_data)
+                    st.session_state['aggrid_edu_single_key_suffix'] = edu_key_suffix + 1
+                    st.success(f"Deleted {len(indices_to_drop)} education entries.")
+                    st.rerun()
+                else: # If no rows are deleted, sync any edits
+                    current_education = []
+                    for _, row in current_edu_data.iterrows():
+                        institution = str(row['Institution']) if 'Institution' in row else ""
+                        degree = str(row['Degree']) if 'Degree' in row else ""
+                        year = str(row['Year']) if 'Year' in row else ""
+                        if institution.strip() or degree.strip() or year.strip():
+                            current_education.append({
+                                "institution": institution,
+                                "degree": degree,
+                                "year": year
+                            })
+                    resume_data["education"] = current_education
+                    st.session_state.resume_data = copy.deepcopy(resume_data)
                 
-                col_e1, col_e2 = st.columns([1,1])
-                with col_e1:
-                    if st.button("➕ Add Education", key="add_edu_single", type="secondary"):
-                        resume_data["education"].append({"institution": "", "degree": "", "year": ""})
-                        st.session_state.resume_data = copy.deepcopy(resume_data)
-                        st.markdown('<div class="success-message">✅ Added new education entry! Click to edit and fill in details.</div>', unsafe_allow_html=True)
-                        st.rerun()
-                with col_e2:
-                    if st.button("🗑️ Delete Checked Education", key="del_edu_single", type="secondary"):
-                        selected_rows = edu_response['selected_rows']
-                        if not selected_rows.empty:
-                            # Use the current AG-Grid data, not session state
-                            current_df = pd.DataFrame(edu_response["data"])
-                            selected_indices = selected_rows.index.tolist()
-                            # Keep only rows that are NOT selected
-                            remaining_df = current_df.drop(selected_indices)
-                            # Convert back to session state format
-                            new_education = []
-                            for _, row in remaining_df.iterrows():
-                                institution = str(row['Institution']) if row['Institution'] else ""
-                                degree = str(row['Degree']) if row['Degree'] else ""
-                                year = str(row['Year']) if row['Year'] else ""
-                                if institution.strip() or degree.strip() or year.strip():
-                                    new_education.append({
-                                        "institution": institution,
-                                        "degree": degree,
-                                        "year": year
-                                    })
-                            resume_data["education"] = new_education
-                            st.session_state.resume_data = copy.deepcopy(resume_data)
-                            st.markdown(f'<div class="success-message">✅ Deleted {len(selected_indices)} education entries successfully!</div>', unsafe_allow_html=True)
-                            st.rerun()
-                        else:
-                            st.markdown('<div class="warning-box">⚠️ Please select rows using checkboxes before deleting.</div>', unsafe_allow_html=True)
+                if st.button("➕ Add Education", key="add_edu_single", type="secondary"):
+                    resume_data["education"].append({"institution": "", "degree": "", "year": ""})
+                    st.session_state.resume_data = copy.deepcopy(resume_data)
+                    st.markdown('<div class="success-message">✅ Added new education entry! Click to edit and fill in details.</div>', unsafe_allow_html=True)
+                    st.rerun()
                 st.markdown("---")
 
                 # --- Certifications Section ---
@@ -1404,6 +1370,7 @@ elif page == "JD-Resume Regeneration":
                     )
                 gb_cert.configure_grid_options(rowDragManaged=True, rowHeight=100)
                 gridOptions_cert = gb_cert.build()
+                cert_key_suffix = st.session_state.get('aggrid_cert_single_key_suffix', 0)
                 cert_response = AgGrid(
                     cert_df,
                     gridOptions=gridOptions_cert,
@@ -1412,61 +1379,57 @@ elif page == "JD-Resume Regeneration":
                     theme="streamlit",
                     height=300,
                     fit_columns_on_grid_load=True,
-                    key="aggrid_cert_single"
+                    key=f"aggrid_cert_single_{cert_key_suffix}"
                 )
                 # Sync current AG-Grid data with session state
                 current_cert_data = pd.DataFrame(cert_response["data"])
-                current_certifications = []
-                for _, row in current_cert_data.iterrows():
-                    title = str(row['Title']) if row['Title'] else ""
-                    issuer = str(row['Issuer']) if row['Issuer'] else ""
-                    year = str(row['Year']) if row['Year'] else ""
-                    link = str(row['link']) if row['link'] else ""
-                    if title.strip() or issuer.strip():
-                        current_certifications.append({
-                            "title": title,
-                            "issuer": issuer,
-                            "year": year,
-                            "link": link
-                        })
-                resume_data["certifications"] = current_certifications
-                st.session_state.resume_data = copy.deepcopy(resume_data)
+                # Check for deleted rows
+                selected_rows_cert = cert_response['selected_rows']
+                if selected_rows_cert is not None and not selected_rows_cert.empty:
+                    current_df = pd.DataFrame(cert_response["data"])
+                    indices_to_drop = selected_rows_cert.index.tolist()
+                    remaining_df = current_df.drop(indices_to_drop)
+                    # Convert back to session state format
+                    new_certifications = []
+                    for _, row in remaining_df.iterrows():
+                        title = str(row['Title']) if 'Title' in row else ""
+                        issuer = str(row['Issuer']) if 'Issuer' in row else ""
+                        year = str(row['Year']) if 'Year' in row else ""
+                        link = str(row['link']) if 'link' in row else ""
+                        if title.strip() or issuer.strip():
+                            new_certifications.append({
+                                "title": title,
+                                "issuer": issuer,
+                                "year": year,
+                                "link": link
+                            })
+                    resume_data["certifications"] = new_certifications
+                    st.session_state.resume_data = copy.deepcopy(resume_data)
+                    st.session_state['aggrid_cert_single_key_suffix'] = cert_key_suffix + 1
+                    st.success("Deleted selected certifications.")
+                    st.rerun()
+                else: # If no rows are deleted, sync any edits
+                    current_certifications = []
+                    for _, row in current_cert_data.iterrows():
+                        title = str(row['Title']) if 'Title' in row else ""
+                        issuer = str(row['Issuer']) if 'Issuer' in row else ""
+                        year = str(row['Year']) if 'Year' in row else ""
+                        link = str(row['link']) if 'link' in row else ""
+                        if title.strip() or issuer.strip():
+                            current_certifications.append({
+                                "title": title,
+                                "issuer": issuer,
+                                "year": year,
+                                "link": link
+                            })
+                    resume_data["certifications"] = current_certifications
+                    st.session_state.resume_data = copy.deepcopy(resume_data)
                 
-                col_c1, col_c2 = st.columns([1,1])
-                with col_c1:
-                    if st.button("➕ Add Certification", key="add_cert_single"):
-                        resume_data["certifications"].append({"title": "", "issuer": "", "year": "", "link": ""})
-                        st.session_state.resume_data = copy.deepcopy(resume_data)
-                        st.success("Added new certification entry.")
-                        st.rerun()
-                with col_c2:
-                    if st.button("🗑️ Delete Checked Certifications", key="del_cert_single"):
-                        selected_rows = cert_response['selected_rows']
-                        if not selected_rows.empty:
-                            # Use current AG-Grid data for deletion
-                            current_df = pd.DataFrame(cert_response["data"])
-                            selected_indices = selected_rows.index.tolist()
-                            remaining_df = current_df.drop(selected_indices)
-                            # Convert back to session state format
-                            new_certifications = []
-                            for _, row in remaining_df.iterrows():
-                                title = str(row['Title']) if row['Title'] else ""
-                                issuer = str(row['Issuer']) if row['Issuer'] else ""
-                                year = str(row['Year']) if row['Year'] else ""
-                                link = str(row['link']) if row['link'] else ""
-                                if title.strip() or issuer.strip():
-                                    new_certifications.append({
-                                        "title": title,
-                                        "issuer": issuer,
-                                        "year": year,
-                                        "link": link
-                                    })
-                            resume_data["certifications"] = new_certifications
-                            st.session_state.resume_data = copy.deepcopy(resume_data)
-                            st.success("Deleted selected certifications.")
-                            st.rerun()
-                        else:
-                            st.error("No rows selected for deletion.")
+                if st.button("➕ Add Certification", key="add_cert_single"):
+                    resume_data["certifications"].append({"title": "", "issuer": "", "year": "", "link": ""})
+                    st.session_state.resume_data = copy.deepcopy(resume_data)
+                    st.success("Added new certification entry.")
+                    st.rerun()
                 st.markdown("---")
 
                 # --- Projects Section ---
@@ -1513,6 +1476,7 @@ elif page == "JD-Resume Regeneration":
                         )
                 gb_proj.configure_grid_options(rowDragManaged=True, rowHeight=200)
                 gridOptions_proj = gb_proj.build()
+                proj_key_suffix = st.session_state.get('aggrid_proj_single_key_suffix', 0)
                 proj_response = AgGrid(
                     proj_df,
                     gridOptions=gridOptions_proj,
@@ -1521,57 +1485,53 @@ elif page == "JD-Resume Regeneration":
                     theme="streamlit",
                     height=400,
                     fit_columns_on_grid_load=True,
-                    key="aggrid_proj_single"
+                    key=f"aggrid_proj_single_{proj_key_suffix}"
                 )
                 # Sync current AG-Grid data with session state
                 current_proj_data = pd.DataFrame(proj_response["data"])
-                current_projects = []
-                for _, row in current_proj_data.iterrows():
-                    title = str(row['Title']) if row['Title'] else ""
-                    description = str(row['Description']) if row['Description'] else ""
-                    link = str(row['link']) if row['link'] else ""
-                    if title.strip() or description.strip():
-                        current_projects.append({
-                            "title": title,
-                            "description": description,
-                            "link": link
-                        })
-                resume_data["projects"] = current_projects
-                st.session_state.resume_data = copy.deepcopy(resume_data)
+                # Check for deleted rows
+                selected_rows_proj = proj_response['selected_rows']
+                if selected_rows_proj is not None and not selected_rows_proj.empty:
+                    current_df = pd.DataFrame(proj_response["data"])
+                    indices_to_drop = selected_rows_proj.index.tolist()
+                    remaining_df = current_df.drop(indices_to_drop)
+                    # Convert back to session state format
+                    new_projects = []
+                    for _, row in remaining_df.iterrows():
+                        title = str(row['Title']) if 'Title' in row else ""
+                        description = str(row['Description']) if 'Description' in row else ""
+                        link = str(row['link']) if 'link' in row else ""
+                        if title.strip() or description.strip():
+                            new_projects.append({
+                                "title": title,
+                                "description": description,
+                                "link": link
+                            })
+                    resume_data["projects"] = new_projects
+                    st.session_state.resume_data = copy.deepcopy(resume_data)
+                    st.session_state['aggrid_proj_single_key_suffix'] = proj_key_suffix + 1
+                    st.success("Deleted selected projects.")
+                    st.rerun()
+                else: # If no rows are deleted, sync any edits
+                    current_projects = []
+                    for _, row in current_proj_data.iterrows():
+                        title = str(row['Title']) if 'Title' in row else ""
+                        description = str(row['Description']) if 'Description' in row else ""
+                        link = str(row['link']) if 'link' in row else ""
+                        if title.strip() or description.strip():
+                            current_projects.append({
+                                "title": title,
+                                "description": description,
+                                "link": link
+                            })
+                    resume_data["projects"] = current_projects
+                    st.session_state.resume_data = copy.deepcopy(resume_data)
                 
-                col_p1, col_p2 = st.columns([1,1])
-                with col_p1:
-                    if st.button("➕ Add Project", key="add_proj_single"):
-                        resume_data["projects"].append({"title": "", "description": "", "link": ""})
-                        st.session_state.resume_data = copy.deepcopy(resume_data)
-                        st.success("Added new project entry.")
-                        st.rerun()
-                with col_p2:
-                    if st.button("🗑️ Delete Checked Projects", key="del_proj_single"):
-                        selected_rows = proj_response['selected_rows']
-                        if not selected_rows.empty:
-                            # Use current AG-Grid data for deletion
-                            current_df = pd.DataFrame(proj_response["data"])
-                            selected_indices = selected_rows.index.tolist()
-                            remaining_df = current_df.drop(selected_indices)
-                            # Convert back to session state format
-                            new_projects = []
-                            for _, row in remaining_df.iterrows():
-                                title = str(row['Title']) if row['Title'] else ""
-                                description = str(row['Description']) if row['Description'] else ""
-                                link = str(row['link']) if row['link'] else ""
-                                if title.strip() or description.strip():
-                                    new_projects.append({
-                                        "title": title,
-                                        "description": description,
-                                        "link": link
-                                    })
-                            resume_data["projects"] = new_projects
-                            st.session_state.resume_data = copy.deepcopy(resume_data)
-                            st.success("Deleted selected projects.")
-                            st.rerun()
-                        else:
-                            st.error("No rows selected for deletion.")
+                if st.button("➕ Add Project", key="add_proj_single"):
+                    resume_data["projects"].append({"title": "", "description": "", "link": ""})
+                    st.session_state.resume_data = copy.deepcopy(resume_data)
+                    st.success("Added new project entry.")
+                    st.rerun()
                 st.markdown("---")
 
                 # --- Skills Section ---
@@ -1595,6 +1555,7 @@ elif page == "JD-Resume Regeneration":
                     )
                 gb_skill.configure_grid_options(rowDragManaged=True, rowHeight=25)
                 gridOptions_skill = gb_skill.build()
+                skill_key_suffix = st.session_state.get('aggrid_skill_single_key_suffix', 0)
                 skill_response = AgGrid(
                     skill_df,
                     gridOptions=gridOptions_skill,
@@ -1603,108 +1564,101 @@ elif page == "JD-Resume Regeneration":
                     theme="streamlit",
                     height=300,
                     fit_columns_on_grid_load=True,
-                    key="aggrid_skill_single"
+                    key=f"aggrid_skill_single_{skill_key_suffix}"
                 )
                 # Sync current AG-Grid data with session state
                 current_skill_data = pd.DataFrame(skill_response["data"])
-                current_skills = [str(row['Skill']).strip() for _, row in current_skill_data.iterrows() if str(row['Skill']).strip()]
-                resume_data["skills"] = current_skills
-                st.session_state.resume_data = copy.deepcopy(resume_data)
+                # Check for deleted rows
+                selected_rows_skill = skill_response['selected_rows']
+                if selected_rows_skill is not None and not selected_rows_skill.empty:
+                    current_df = pd.DataFrame(skill_response["data"])
+                    indices_to_drop = selected_rows_skill.index.tolist()
+                    remaining_df = current_df.drop(indices_to_drop)
+                    # Convert back to session state format
+                    new_skills = [str(row['Skill']).strip() for _, row in remaining_df.iterrows() if 'Skill' in row and str(row['Skill']).strip()]
+                    resume_data["skills"] = new_skills
+                    st.session_state.resume_data = copy.deepcopy(resume_data)
+                    st.session_state['aggrid_skill_single_key_suffix'] = skill_key_suffix + 1
+                    st.success("Deleted selected skills.")
+                    st.rerun()
+                else: # If no rows are deleted, sync any edits
+                    current_skills = [str(row['Skill']).strip() for _, row in current_skill_data.iterrows() if 'Skill' in row and str(row['Skill']).strip()]
+                    resume_data["skills"] = current_skills
+                    st.session_state.resume_data = copy.deepcopy(resume_data)
                 
-                col_s1, col_s2 = st.columns([1,1])
-                with col_s1:
-                    if st.button("➕ Add Skill", key="add_skill_single"):
-                        resume_data["skills"].append("")
-                        st.session_state.resume_data = copy.deepcopy(resume_data)
-                        st.success("Added new skill entry.")
-                        st.rerun()
-                with col_s2:
-                    if st.button("🗑️ Delete Checked Skills", key="del_skill_single"):
-                        selected_rows = skill_response['selected_rows']
-                        if not selected_rows.empty:
-                            # Use current AG-Grid data for deletion
-                            current_df = pd.DataFrame(skill_response["data"])
-                            selected_indices = selected_rows.index.tolist()
-                            remaining_df = current_df.drop(selected_indices)
-                            # Convert back to session state format
-                            new_skills = [str(row['Skill']).strip() for _, row in remaining_df.iterrows() if str(row['Skill']).strip()]
-                            resume_data["skills"] = new_skills
-                            st.session_state.resume_data = copy.deepcopy(resume_data)
-                            st.success("Deleted selected skills.")
-                            st.rerun()
-                        else:
-                            st.error("No rows selected for deletion.")
+                if st.button("➕ Add Skill", key="add_skill_single"):
+                    resume_data["skills"].append("")
+                    st.session_state.resume_data = copy.deepcopy(resume_data)
+                    st.success("Added new skill entry.")
+                    st.rerun()
                 st.markdown("---")
                 
 
                 # Generate PDF button
                 if st.button("🔄 Update and Generate New PDF", key="update_pdf_single"):
-                    # Sync current AgGrid data with resume_data before PDF generation
-                    # Update skills from AgGrid
-                    updated_skill_df = pd.DataFrame(skill_response["data"])
-                    current_skills = [row['Skill'] for _, row in updated_skill_df.iterrows() if row['Skill'] and str(row['Skill']).strip()]
-                    resume_data["skills"] = current_skills
+                    # Create a fresh copy of data to sync
+                    synced_data = copy.deepcopy(st.session_state.resume_data)
                     
-                    # Update education from AgGrid
-                    updated_edu_df = pd.DataFrame(edu_response["data"])
-                    current_education = []
-                    for _, row in updated_edu_df.iterrows():
-                        institution = str(row['Institution']) if row['Institution'] else ""
-                        degree = str(row['Degree']) if row['Degree'] else ""
-                        year = str(row['Year']) if row['Year'] else ""
+                    # Sync simple text inputs
+                    synced_data["name"] = resume_data["name"]
+                    synced_data["title"] = resume_data["title"]
+                    synced_data["summary"] = resume_data["summary"]
+
+                    # Sync Education from AgGrid
+                    edu_df = pd.DataFrame(edu_response["data"])
+                    synced_education = []
+                    for _, row in edu_df.iterrows():
+                        institution = str(row['Institution']) if 'Institution' in row else ""
+                        degree = str(row['Degree']) if 'Degree' in row else ""
+                        year = str(row['Year']) if 'Year' in row else ""
                         if institution.strip() or degree.strip() or year.strip():
-                            current_education.append({
-                                "institution": institution,
-                                "degree": degree,
-                                "year": year
-                            })
-                    resume_data["education"] = current_education
+                            synced_education.append({"institution": institution, "degree": degree, "year": year})
+                    synced_data["education"] = synced_education
                     
-                    # Update certifications from AgGrid
-                    updated_cert_df = pd.DataFrame(cert_response["data"])
-                    current_certifications = []
-                    for _, row in updated_cert_df.iterrows():
-                        title = str(row['Title']) if row['Title'] else ""
-                        issuer = str(row['Issuer']) if row['Issuer'] else ""
-                        year = str(row['Year']) if row['Year'] else ""
-                        link = str(row['link']) if row['link'] else ""
+                    # Sync Certifications from AgGrid
+                    cert_df = pd.DataFrame(cert_response["data"])
+                    synced_certifications = []
+                    for _, row in cert_df.iterrows():
+                        title = str(row['Title']) if 'Title' in row else ""
+                        issuer = str(row['Issuer']) if 'Issuer' in row else ""
+                        year = str(row['Year']) if 'Year' in row else ""
+                        link = str(row['link']) if 'link' in row else ""
                         if title.strip() or issuer.strip():
-                            current_certifications.append({
-                                "title": title,
-                                "issuer": issuer,
-                                "year": year,
-                                "link": link
-                            })
-                    resume_data["certifications"] = current_certifications
+                            synced_certifications.append({"title": title, "issuer": issuer, "year": year, "link": link})
+                    synced_data["certifications"] = synced_certifications
                     
-                    # Update projects from AgGrid
-                    updated_proj_df = pd.DataFrame(proj_response["data"])
-                    current_projects = []
-                    for _, row in updated_proj_df.iterrows():
-                        title = str(row['Title']) if row['Title'] else ""
-                        description = str(row['Description']) if row['Description'] else ""
-                        link = str(row['link']) if row['link'] else ""
+                    # Sync Projects from AgGrid
+                    proj_df = pd.DataFrame(proj_response["data"])
+                    synced_projects = []
+                    for _, row in proj_df.iterrows():
+                        title = str(row['Title']) if 'Title' in row else ""
+                        description = str(row['Description']) if 'Description' in row else ""
+                        link = str(row['link']) if 'link' in row else ""
                         if title.strip() or description.strip():
-                            current_projects.append({
-                                "title": title,
-                                "description": description,
-                                "link": link
-                            })
-                    resume_data["projects"] = current_projects
+                            synced_projects.append({"title": title, "description": description, "link": link})
+                    synced_data["projects"] = synced_projects
+
+                    # Sync Skills from AgGrid
+                    skill_df = pd.DataFrame(skill_response["data"])
+                    synced_skills = [str(row['Skill']).strip() for _, row in skill_df.iterrows() if 'Skill' in row and str(row['Skill']).strip()]
+                    synced_data["skills"] = synced_skills
                     
-                    # Update session state with synchronized data
-                    st.session_state.resume_data = copy.deepcopy(resume_data)
-                    st.session_state['expander_open_single'] = True  # Open expander after PDF generation
-                    st.session_state['summary_generation_complete'] = False  # Reset summary state
+                    # Update session state with the fully synchronized data
+                    st.session_state.resume_data = copy.deepcopy(synced_data)
+                    st.session_state['expander_open_single'] = True
+                    st.session_state['summary_generation_complete'] = False
                     st.session_state['summary_generation_requested'] = False
+                    
                     with st.spinner("Generating PDF..."):
                         keywords = st.session_state.get('extracted_keywords', None)
-                        pdf_file, html_out = PDFUtils.generate_pdf(resume_data, keywords=keywords)
+                        # Use the freshly synced data for PDF generation
+                        pdf_file, html_out = PDFUtils.generate_pdf(synced_data, keywords=keywords)
                         pdf_b64 = PDFUtils.get_base64_pdf(pdf_file)
                         st.session_state.generated_pdf = pdf_file
                         st.session_state.generated_pdf_b64 = pdf_b64
                         st.session_state.pdf_ready_single = True
                         st.success("PDF generated successfully!")
+                        st.rerun()
 
                 # --- PDF Preview Section (Outside button click for persistent display) ---
                 if st.session_state.get("pdf_ready_single", False):
@@ -1713,23 +1667,23 @@ elif page == "JD-Resume Regeneration":
                     st.info("If the PDF is not viewable above, your browser may not support embedded PDF viewing.")
                     link_id = f"open_pdf_link_{uuid.uuid4().hex}"
                     components.html(f"""
-                        <a id=\"{link_id}\" style=\"margin:10px 0;display:inline-block;padding:8px 16px;font-size:16px;border-radius:5px;background:#0068c9;color:white;text-decoration:none;border:none;cursor:pointer;\">
+                        <a id="{link_id}" style="margin:10px 0;display:inline-block;padding:8px 16px;font-size:16px;border-radius:5px;background:#0068c9;color:white;text-decoration:none;border:none;cursor:pointer;">
                             🔗 Click here to open the PDF in a new tab
                         </a>
                         <script>
-                        const b64Data = \"{pdf_b64}\";
+                        const b64Data = "{pdf_b64}";
                         const byteCharacters = atob(b64Data);
                         const byteNumbers = new Array(byteCharacters.length);
                         for (let i = 0; i < byteCharacters.length; i++) {{
                             byteNumbers[i] = byteCharacters.charCodeAt(i);
                         }}
                         const byteArray = new Uint8Array(byteNumbers);
-                        const blob = new Blob([byteArray], {{type: \"application/pdf\"}});
+                        const blob = new Blob([byteArray], {{type: "application/pdf"}});
                         const blobUrl = URL.createObjectURL(blob);
-                        const link = document.getElementById(\"{link_id}\");
+                        const link = document.getElementById("{link_id}");
                         link.href = blobUrl;
-                        link.target = \"_blank\";
-                        link.rel = \"noopener noreferrer\";
+                        link.target = "_blank";
+                        link.rel = "noopener noreferrer";
                         link.onclick = function() {{
                             setTimeout(function(){{URL.revokeObjectURL(blobUrl)}}, 10000);
                         }};
