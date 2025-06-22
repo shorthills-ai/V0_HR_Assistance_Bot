@@ -193,22 +193,22 @@
     {% endif %}
 
     </div>
-        <div class="right-column">
+    <div class="right-column">
       {% for project in right_column %}
-          <div class="project-block">
-            {% set proj_num = right_project_numbers[loop.index0] if right_project_numbers is defined else None %}
+        <div class="project-block">
+          {% set proj_num = right_project_numbers[loop.index0] if right_project_numbers is defined else None %}
             {% if proj_num and project.title and not project.get('is_continuation', False) %}
-              <h3 class="project-title">Project {{ proj_num }}: {{ project.title|safe }}</h3>
-            {% endif %}
-            {% if project.description %}
-              <ul class="custom-arrow-list">
-                {% for point in project.description.split('\n') if point.strip() %}
-                  <li>{{ point.strip()|safe }}</li>
-                {% endfor %}
-              </ul>
-            {% endif %}
-          </div>
-        {% endfor %}
+            <h3 class="project-title">Project {{ proj_num }}: {{ project.title|safe }}</h3>
+          {% endif %}
+          {% if project.description %}
+            <ul class="custom-arrow-list">
+              {% for point in project.description.split('\n') if point.strip() %}
+                <li>{{ point.strip()|safe }}</li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+        </div>
+      {% endfor %}
     </div>
   </div>
   <div class="footer">

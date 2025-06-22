@@ -45,45 +45,126 @@ st.markdown("""
 }
 .stButton button {
     width: 100%;
+    border-radius: 8px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+.stButton button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
 .card {
-    background-color: #f9f9f9;
-    border-radius: 10px;
-    padding: 20px;
-    margin-bottom: 15px;
-    border-left: 5px solid #0068c9;
+    background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 20px;
+    border-left: 4px solid #0068c9;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 .card:hover {
-    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+    transform: translateY(-2px);
+    transition: all 0.3s ease;
 }
 .candidate-name {
-    font-size: 20px;
-    font-weight: bold;
+    font-size: 22px;
+    font-weight: 700;
     color: #0068c9;
+    margin-bottom: 8px;
 }
 .contact-info {
-    color: #444;
-    margin: 10px 0;
+    color: #555;
+    margin: 12px 0;
+    font-size: 14px;
 }
 .score-info {
     color: #666;
     font-size: 14px;
-    margin-top: 10px;
-    padding-top: 10px;
-    border-top: 1px solid #eee;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #e9ecef;
 }
 .accepted {
     color: #28a745;
-    font-weight: bold;
+    font-weight: 600;
 }
 .rejected {
     color: #dc3545;
-    font-weight: bold;
+    font-weight: 600;
 }
 .result-count {
-    font-size: 18px;
-    font-weight: bold;
-    margin-bottom: 20px;
+    font-size: 20px;
+    font-weight: 600;
+    margin-bottom: 24px;
+    color: #333;
+}
+.section-header {
+    background: linear-gradient(90deg, #0068c9, #0056b3);
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-weight: 600;
+    margin: 20px 0 16px 0;
+    box-shadow: 0 2px 8px rgba(0,104,201,0.3);
+}
+.add-button {
+    background: linear-gradient(45deg, #28a745, #20c997) !important;
+    border: none !important;
+    color: white !important;
+    border-radius: 8px !important;
+    padding: 8px 16px !important;
+    font-weight: 500 !important;
+}
+.delete-button {
+    background: linear-gradient(45deg, #dc3545, #e74c3c) !important;
+    border: none !important;
+    color: white !important;
+    border-radius: 8px !important;
+    padding: 8px 16px !important;
+    font-weight: 500 !important;
+}
+.success-message {
+    background: #d4edda;
+    border: 1px solid #c3e6cb;
+    color: #155724;
+    padding: 12px;
+    border-radius: 8px;
+    margin: 8px 0;
+}
+.error-message {
+    background: #f8d7da;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+    padding: 12px;
+    border-radius: 8px;
+    margin: 8px 0;
+}
+.ag-theme-streamlit {
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+    overflow: hidden;
+}
+.ag-header {
+    background: linear-gradient(90deg, #f8f9fa, #ffffff);
+    font-weight: 600;
+}
+.info-box {
+    background: #e7f3ff;
+    border: 1px solid #b3d9ff;
+    color: #0056b3;
+    padding: 16px;
+    border-radius: 8px;
+    margin: 16px 0;
+    font-size: 14px;
+}
+.warning-box {
+    background: #fff3cd;
+    border: 1px solid #ffeaa7;
+    color: #856404;
+    padding: 16px;
+    border-radius: 8px;
+    margin: 16px 0;
+    font-size: 14px;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -437,12 +518,18 @@ if page == "Resume Search Engine":
 elif page == "JD-Resume Regeneration":
     st.title("🎯 JD-Resume Regeneration")
     st.markdown("""
-    Input a job description and let our AI-powered system:
-    1. Extract relevant keywords  
-    2. Score candidates based on match  
-    3. Show detailed analysis  
-    4. Retailor their resumes on the fly  
-    """)
+    <div class="info-box">
+    <h4>🚀 AI-Powered Resume Retailoring System</h4>
+    Transform candidate resumes to perfectly match job requirements with our intelligent system:
+    <ul>
+        <li><strong>📊 Smart Analysis:</strong> Extract relevant keywords and requirements from job descriptions</li>
+        <li><strong>🎯 Candidate Matching:</strong> Score and rank candidates based on compatibility</li>
+        <li><strong>✨ Automatic Optimization:</strong> Retailor resumes with job-specific skills and project descriptions</li>
+        <li><strong>📝 Interactive Editing:</strong> Fine-tune all sections with real-time preview</li>
+        <li><strong>📄 Professional Output:</strong> Generate polished PDF and Word documents</li>
+    </ul>
+    </div>
+    """, unsafe_allow_html=True)
 
     # Create two tabs for different search types
     tab1, tab2 = st.tabs(["🔍 Bulk Search ", "👤 Individual Retailor"])
@@ -574,7 +661,8 @@ elif page == "JD-Resume Regeneration":
                             st.subheader("Edit Resume Fields")
 
                             # --- Education Section ---
-                            st.subheader("🎓 Education")
+                            st.markdown('<div class="section-header">🎓 Education</div>', unsafe_allow_html=True)
+                            st.markdown('<div class="info-box">💡 <strong>Tip:</strong> Click on any cell to edit. Use checkboxes to select rows for deletion. Add new entries with the button below.</div>', unsafe_allow_html=True)
                             edu_list = resume_data["education"]
                             def normalize_edu(entry):
                                 entry.setdefault("institution", "")
@@ -612,16 +700,31 @@ elif page == "JD-Resume Regeneration":
                                 fit_columns_on_grid_load=True,
                                 key=f"aggrid_edu_bulk_{cand['mongo_id']}"
                             )
+                            # Sync current AG-Grid data with session state immediately
+                            current_edu_data = pd.DataFrame(edu_response["data"])
+                            current_education = []
+                            for _, row in current_edu_data.iterrows():
+                                institution = str(row['Institution']) if row['Institution'] else ""
+                                degree = str(row['Degree']) if row['Degree'] else ""
+                                year = str(row['Year']) if row['Year'] else ""
+                                if institution.strip() or degree.strip() or year.strip():
+                                    current_education.append({
+                                        "institution": institution,
+                                        "degree": degree,
+                                        "year": year
+                                    })
+                            resume_data["education"] = current_education
+                            st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
                             updated_edu_df = pd.DataFrame(edu_response["data"])
                             col_e1, col_e2 = st.columns([1,1])
                             with col_e1:
-                                if st.button("➕ Add Education", key=f"add_edu_bulk_{cand['mongo_id']}"):
+                                if st.button("➕ Add Education", key=f"add_edu_bulk_{cand['mongo_id']}", type="secondary"):
                                     resume_data["education"].append({"institution": "", "degree": "", "year": ""})
                                     st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
-                                    st.success("Added new education entry.")
+                                    st.markdown('<div class="success-message">✅ Added new education entry! Click to edit and fill in details.</div>', unsafe_allow_html=True)
                                     st.rerun()
                             with col_e2:
-                                if st.button("🗑️ Delete Checked Education", key=f"del_edu_bulk_{cand['mongo_id']}"):
+                                if st.button("🗑️ Delete Checked Education", key=f"del_edu_bulk_{cand['mongo_id']}", type="secondary"):
                                     selected_rows = edu_response['selected_rows']
                                     if not selected_rows.empty:
                                         # Use current AG-Grid data for deletion
@@ -642,14 +745,15 @@ elif page == "JD-Resume Regeneration":
                                                 })
                                         resume_data["education"] = new_education
                                         st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
-                                        st.success("Deleted selected education entries.")
+                                        st.markdown(f'<div class="success-message">✅ Deleted {len(selected_indices)} education entries successfully!</div>', unsafe_allow_html=True)
                                         st.rerun()
                                     else:
-                                        st.error("No rows selected for deletion.")
+                                        st.markdown('<div class="warning-box">⚠️ Please select rows using checkboxes before deleting.</div>', unsafe_allow_html=True)
                             st.markdown("---")
 
                             # --- Certifications Section ---
-                            st.subheader("🏅 Certifications")
+                            st.markdown('<div class="section-header">🏅 Certifications</div>', unsafe_allow_html=True)
+                            st.markdown('<div class="info-box">💡 <strong>Tip:</strong> Add your professional certifications and credentials. Links are optional but helpful for verification.</div>', unsafe_allow_html=True)
                             cert_list = resume_data["certifications"]
                             def normalize_cert(entry):
                                 if not isinstance(entry, dict):
@@ -690,6 +794,23 @@ elif page == "JD-Resume Regeneration":
                                 fit_columns_on_grid_load=True,
                                 key=f"aggrid_cert_bulk_{cand['mongo_id']}"
                             )
+                            # Sync current AG-Grid data with session state immediately
+                            current_cert_data = pd.DataFrame(cert_response["data"])
+                            current_certifications = []
+                            for _, row in current_cert_data.iterrows():
+                                title = str(row['Title']) if row['Title'] else ""
+                                issuer = str(row['Issuer']) if row['Issuer'] else ""
+                                year = str(row['Year']) if row['Year'] else ""
+                                link = str(row['link']) if row['link'] else ""
+                                if title.strip() or issuer.strip():
+                                    current_certifications.append({
+                                        "title": title,
+                                        "issuer": issuer,
+                                        "year": year,
+                                        "link": link
+                                    })
+                            resume_data["certifications"] = current_certifications
+                            st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
                             updated_cert_df = pd.DataFrame(cert_response["data"])
                             col_c1, col_c2 = st.columns([1,1])
                             with col_c1:
@@ -729,7 +850,8 @@ elif page == "JD-Resume Regeneration":
                             st.markdown("---")
 
                             # --- Projects Section ---
-                            st.subheader("💼 Projects")
+                            st.markdown('<div class="section-header">💼 Projects</div>', unsafe_allow_html=True)
+                            st.markdown('<div class="info-box">💡 <strong>Tip:</strong> Project descriptions are automatically optimized for the job. You can edit them to better match your experience.</div>', unsafe_allow_html=True)
                             proj_list = resume_data["projects"]
                             def normalize_proj(entry):
                                 entry.setdefault("title", "")
@@ -737,11 +859,7 @@ elif page == "JD-Resume Regeneration":
                                 entry.setdefault("link", "")
                                 return entry
                             proj_list = [normalize_proj(p) for p in proj_list]
-                            proj_list = [
-                                {**proj, 'description': '\n'.join([s.strip() for s in proj.get('description', '').split('.') if s.strip()]) + ('.' if proj.get('description', '').strip().endswith('.') else '')}
-                                if 'description' in proj else proj
-                                for proj in proj_list
-                            ]
+                            # Don't modify the description - keep it as is from retailoring
                             if len(proj_list) == 0:
                                 proj_df = pd.DataFrame(columns=["Title", "Description", "link"])
                             else:
@@ -785,6 +903,21 @@ elif page == "JD-Resume Regeneration":
                                 fit_columns_on_grid_load=True,
                                 key=f"aggrid_proj_bulk_{cand['mongo_id']}"
                             )
+                            # Sync current AG-Grid data with session state immediately
+                            current_proj_data = pd.DataFrame(proj_response["data"])
+                            current_projects = []
+                            for _, row in current_proj_data.iterrows():
+                                title = str(row['Title']) if row['Title'] else ""
+                                description = str(row['Description']) if row['Description'] else ""
+                                link = str(row['link']) if row['link'] else ""
+                                if title.strip() or description.strip():
+                                    current_projects.append({
+                                        "title": title,
+                                        "description": description,
+                                        "link": link
+                                    })
+                            resume_data["projects"] = current_projects
+                            st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
                             updated_proj_df = pd.DataFrame(proj_response["data"])
                             col_p1, col_p2 = st.columns([1,1])
                             with col_p1:
@@ -822,7 +955,8 @@ elif page == "JD-Resume Regeneration":
                             st.markdown("---")
 
                             # --- Skills Section ---
-                            st.subheader("🛠️ Skills")
+                            st.markdown('<div class="section-header">🛠️ Skills</div>', unsafe_allow_html=True)
+                            st.markdown('<div class="info-box">💡 <strong>Tip:</strong> Skills are balanced between your original expertise and job requirements. Add or remove as needed.</div>', unsafe_allow_html=True)
                             skill_list = resume_data["skills"]
                             if len(skill_list) == 0:
                                 skill_df = pd.DataFrame(columns=["Skill"])
@@ -851,6 +985,11 @@ elif page == "JD-Resume Regeneration":
                                 fit_columns_on_grid_load=True,
                                 key=f"aggrid_skill_bulk_{cand['mongo_id']}"
                             )
+                            # Sync current AG-Grid data with session state immediately
+                            current_skill_data = pd.DataFrame(skill_response["data"])
+                            current_skills = [str(row['Skill']).strip() for _, row in current_skill_data.iterrows() if str(row['Skill']).strip()]
+                            resume_data["skills"] = current_skills
+                            st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
                             updated_skill_df = pd.DataFrame(skill_response["data"])
                             col_s1, col_s2 = st.columns([1,1])
                             with col_s1:
@@ -1141,7 +1280,8 @@ elif page == "JD-Resume Regeneration":
                 st.markdown("---")
 
                 # --- Education Section ---
-                st.subheader("🎓 Education")
+                st.markdown('<div class="section-header">🎓 Education</div>', unsafe_allow_html=True)
+                st.markdown('<div class="info-box">💡 <strong>Tip:</strong> Click on any cell to edit. Use checkboxes to select rows for deletion. Add new entries with the button below.</div>', unsafe_allow_html=True)
                 edu_list = resume_data["education"]
                 def normalize_edu(entry):
                     entry.setdefault("institution", "")
@@ -1197,13 +1337,13 @@ elif page == "JD-Resume Regeneration":
                 
                 col_e1, col_e2 = st.columns([1,1])
                 with col_e1:
-                    if st.button("➕ Add Education", key="add_edu_single"):
+                    if st.button("➕ Add Education", key="add_edu_single", type="secondary"):
                         resume_data["education"].append({"institution": "", "degree": "", "year": ""})
                         st.session_state.resume_data = copy.deepcopy(resume_data)
-                        st.success("Added new education entry.")
+                        st.markdown('<div class="success-message">✅ Added new education entry! Click to edit and fill in details.</div>', unsafe_allow_html=True)
                         st.rerun()
                 with col_e2:
-                    if st.button("🗑️ Delete Checked Education", key="del_edu_single"):
+                    if st.button("🗑️ Delete Checked Education", key="del_edu_single", type="secondary"):
                         selected_rows = edu_response['selected_rows']
                         if not selected_rows.empty:
                             # Use the current AG-Grid data, not session state
@@ -1225,14 +1365,15 @@ elif page == "JD-Resume Regeneration":
                                     })
                             resume_data["education"] = new_education
                             st.session_state.resume_data = copy.deepcopy(resume_data)
-                            st.success("Deleted selected education entries.")
+                            st.markdown(f'<div class="success-message">✅ Deleted {len(selected_indices)} education entries successfully!</div>', unsafe_allow_html=True)
                             st.rerun()
                         else:
-                            st.error("No rows selected for deletion.")
+                            st.markdown('<div class="warning-box">⚠️ Please select rows using checkboxes before deleting.</div>', unsafe_allow_html=True)
                 st.markdown("---")
 
                 # --- Certifications Section ---
-                st.subheader("🏅 Certifications")
+                st.markdown('<div class="section-header">🏅 Certifications</div>', unsafe_allow_html=True)
+                st.markdown('<div class="info-box">💡 <strong>Tip:</strong> Add your professional certifications and credentials. Links are optional but helpful for verification.</div>', unsafe_allow_html=True)
                 cert_list = resume_data["certifications"]
                 def normalize_cert(entry):
                     if not isinstance(entry, dict):
@@ -1329,7 +1470,8 @@ elif page == "JD-Resume Regeneration":
                 st.markdown("---")
 
                 # --- Projects Section ---
-                st.subheader("💼 Projects")
+                st.markdown('<div class="section-header">💼 Projects</div>', unsafe_allow_html=True)
+                st.markdown('<div class="info-box">💡 <strong>Tip:</strong> Project descriptions are automatically optimized for the job. You can edit them to better match your experience.</div>', unsafe_allow_html=True)
                 proj_list = resume_data["projects"]
                 def normalize_proj(entry):
                     entry.setdefault("title", "")
@@ -1433,7 +1575,8 @@ elif page == "JD-Resume Regeneration":
                 st.markdown("---")
 
                 # --- Skills Section ---
-                st.subheader("🛠️ Skills")
+                st.markdown('<div class="section-header">🛠️ Skills</div>', unsafe_allow_html=True)
+                st.markdown('<div class="info-box">💡 <strong>Tip:</strong> Skills are balanced between your original expertise and job requirements. Add or remove as needed.</div>', unsafe_allow_html=True)
                 skill_list = resume_data["skills"]
                 if len(skill_list) == 0:
                     skill_df = pd.DataFrame(columns=["Skill"])
