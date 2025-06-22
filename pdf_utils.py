@@ -314,7 +314,7 @@ class PDFUtils:
         continuation_template = env.get_template('templates/template_continuation.html')
 
         # Estimate how many items fit in the left and right columns per page
-        LEFT_COL_MAX = 32  # Total items per page in left column
+        LEFT_COL_MAX = 34  # Total items per page in left column
 
 
         font_size = 13  # Default font size for all pages
