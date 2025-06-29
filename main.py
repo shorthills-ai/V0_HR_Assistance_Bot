@@ -700,6 +700,9 @@ elif page == "JD-Resume Regeneration":
                                 )
                             gb_edu.configure_grid_options(rowDragManaged=True, rowHeight=100)
                             gridOptions_edu = gb_edu.build()
+                            # Initialize the nested dict structure if needed
+                            if cand['mongo_id'] not in st.session_state.aggrid_key_suffixes_bulk:
+                                st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']] = {}
                             edu_key_suffix = st.session_state.aggrid_key_suffixes_bulk.get(cand['mongo_id'], {}).get('edu', 0)
                             edu_response = AgGrid(
                                 edu_df,
@@ -729,6 +732,11 @@ elif page == "JD-Resume Regeneration":
                                         new_education.append({"institution": institution, "degree": degree, "year": year})
                                 resume_data["education"] = new_education
                                 st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
+                                # Initialize the nested dict structure if needed
+                                if cand['mongo_id'] not in st.session_state.aggrid_key_suffixes_bulk:
+                                    st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']] = {}
+                                if 'edu' not in st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']]:
+                                    st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']]['edu'] = 0
                                 st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']]['edu'] += 1
                                 st.success(f"Deleted {len(indices_to_drop)} education entries.")
                                 st.rerun()
@@ -746,6 +754,12 @@ elif page == "JD-Resume Regeneration":
                             if st.button("➕ Add Education", key=f"add_edu_bulk_{cand['mongo_id']}", type="secondary"):
                                 resume_data["education"].append({"institution": "", "degree": "", "year": ""})
                                 st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
+                                # Increment key suffix to force AgGrid refresh
+                                if cand['mongo_id'] not in st.session_state.aggrid_key_suffixes_bulk:
+                                    st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']] = {}
+                                if 'edu' not in st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']]:
+                                    st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']]['edu'] = 0
+                                st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']]['edu'] += 1
                                 st.markdown('<div class="success-message">✅ Added new education entry! Click to edit and fill in details.</div>', unsafe_allow_html=True)
                                 st.rerun()
                             st.markdown("---")
@@ -783,6 +797,9 @@ elif page == "JD-Resume Regeneration":
                                 )
                             gb_cert.configure_grid_options(rowDragManaged=True, rowHeight=100)
                             gridOptions_cert = gb_cert.build()
+                            # Initialize the nested dict structure if needed
+                            if cand['mongo_id'] not in st.session_state.aggrid_key_suffixes_bulk:
+                                st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']] = {}
                             cert_key_suffix = st.session_state.aggrid_key_suffixes_bulk.get(cand['mongo_id'], {}).get('cert', 0)
                             cert_response = AgGrid(
                                 cert_df,
@@ -813,6 +830,11 @@ elif page == "JD-Resume Regeneration":
                                         new_certifications.append({"title": title, "issuer": issuer, "year": year, "link": link})
                                 resume_data["certifications"] = new_certifications
                                 st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
+                                # Initialize the nested dict structure if needed
+                                if cand['mongo_id'] not in st.session_state.aggrid_key_suffixes_bulk:
+                                    st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']] = {}
+                                if 'cert' not in st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']]:
+                                    st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']]['cert'] = 0
                                 st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']]['cert'] += 1
                                 st.success("Deleted selected certifications.")
                                 st.rerun()
@@ -831,6 +853,12 @@ elif page == "JD-Resume Regeneration":
                             if st.button("➕ Add Certification", key=f"add_cert_bulk_{cand['mongo_id']}"):
                                 resume_data["certifications"].append({"title": "", "issuer": "", "year": "", "link": ""})
                                 st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
+                                # Increment key suffix to force AgGrid refresh
+                                if cand['mongo_id'] not in st.session_state.aggrid_key_suffixes_bulk:
+                                    st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']] = {}
+                                if 'cert' not in st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']]:
+                                    st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']]['cert'] = 0
+                                st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']]['cert'] += 1
                                 st.success("Added new certification entry.")
                                 st.rerun()
                             st.markdown("---")
@@ -879,6 +907,9 @@ elif page == "JD-Resume Regeneration":
                                     )
                             gb_proj.configure_grid_options(rowDragManaged=True, rowHeight=200)
                             gridOptions_proj = gb_proj.build()
+                            # Initialize the nested dict structure if needed
+                            if cand['mongo_id'] not in st.session_state.aggrid_key_suffixes_bulk:
+                                st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']] = {}
                             proj_key_suffix = st.session_state.aggrid_key_suffixes_bulk.get(cand['mongo_id'], {}).get('proj', 0)
                             proj_response = AgGrid(
                                 proj_df,
@@ -908,6 +939,11 @@ elif page == "JD-Resume Regeneration":
                                         new_projects.append({"title": title, "description": description, "link": link})
                                 resume_data["projects"] = new_projects
                                 st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
+                                # Initialize the nested dict structure if needed
+                                if cand['mongo_id'] not in st.session_state.aggrid_key_suffixes_bulk:
+                                    st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']] = {}
+                                if 'proj' not in st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']]:
+                                    st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']]['proj'] = 0
                                 st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']]['proj'] += 1
                                 st.success("Deleted selected projects.")
                                 st.rerun()
@@ -925,6 +961,12 @@ elif page == "JD-Resume Regeneration":
                             if st.button("➕ Add Project", key=f"add_proj_bulk_{cand['mongo_id']}"):
                                 resume_data["projects"].append({"title": "", "description": "", "link": ""})
                                 st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
+                                # Increment key suffix to force AgGrid refresh
+                                if cand['mongo_id'] not in st.session_state.aggrid_key_suffixes_bulk:
+                                    st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']] = {}
+                                if 'proj' not in st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']]:
+                                    st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']]['proj'] = 0
+                                st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']]['proj'] += 1
                                 st.success("Added new project entry.")
                                 st.rerun()
                             st.markdown("---")
@@ -950,6 +992,9 @@ elif page == "JD-Resume Regeneration":
                                 )
                             gb_skill.configure_grid_options(rowDragManaged=True, rowHeight=25)
                             gridOptions_skill = gb_skill.build()
+                            # Initialize the nested dict structure if needed
+                            if cand['mongo_id'] not in st.session_state.aggrid_key_suffixes_bulk:
+                                st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']] = {}
                             skill_key_suffix = st.session_state.aggrid_key_suffixes_bulk.get(cand['mongo_id'], {}).get('skill', 0)
                             skill_response = AgGrid(
                                 skill_df,
@@ -973,6 +1018,11 @@ elif page == "JD-Resume Regeneration":
                                 new_skills = [str(row['Skill']).strip() for _, row in remaining_df.iterrows() if 'Skill' in row and str(row['Skill']).strip()]
                                 resume_data["skills"] = new_skills
                                 st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
+                                # Initialize the nested dict structure if needed
+                                if cand['mongo_id'] not in st.session_state.aggrid_key_suffixes_bulk:
+                                    st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']] = {}
+                                if 'skill' not in st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']]:
+                                    st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']]['skill'] = 0
                                 st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']]['skill'] += 1
                                 st.success("Deleted selected skills.")
                                 st.rerun()
@@ -984,6 +1034,12 @@ elif page == "JD-Resume Regeneration":
                             if st.button("➕ Add Skill", key=f"add_skill_bulk_{cand['mongo_id']}"):
                                 resume_data["skills"].append("")
                                 st.session_state[f'resume_data_{cand["mongo_id"]}'] = copy.deepcopy(resume_data)
+                                # Increment key suffix to force AgGrid refresh
+                                if cand['mongo_id'] not in st.session_state.aggrid_key_suffixes_bulk:
+                                    st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']] = {}
+                                if 'skill' not in st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']]:
+                                    st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']]['skill'] = 0
+                                st.session_state.aggrid_key_suffixes_bulk[cand['mongo_id']]['skill'] += 1
                                 st.success("Added new skill entry.")
                                 st.rerun()
                             st.markdown("---")
@@ -1333,6 +1389,8 @@ elif page == "JD-Resume Regeneration":
                 if st.button("➕ Add Education", key="add_edu_single", type="secondary"):
                     resume_data["education"].append({"institution": "", "degree": "", "year": ""})
                     st.session_state.resume_data = copy.deepcopy(resume_data)
+                    # Increment key suffix to force AgGrid refresh
+                    st.session_state['aggrid_edu_single_key_suffix'] = st.session_state.get('aggrid_edu_single_key_suffix', 0) + 1
                     st.markdown('<div class="success-message">✅ Added new education entry! Click to edit and fill in details.</div>', unsafe_allow_html=True)
                     st.rerun()
                 st.markdown("---")
@@ -1428,6 +1486,8 @@ elif page == "JD-Resume Regeneration":
                 if st.button("➕ Add Certification", key="add_cert_single"):
                     resume_data["certifications"].append({"title": "", "issuer": "", "year": "", "link": ""})
                     st.session_state.resume_data = copy.deepcopy(resume_data)
+                    # Increment key suffix to force AgGrid refresh
+                    st.session_state['aggrid_cert_single_key_suffix'] = st.session_state.get('aggrid_cert_single_key_suffix', 0) + 1
                     st.success("Added new certification entry.")
                     st.rerun()
                 st.markdown("---")
@@ -1530,6 +1590,8 @@ elif page == "JD-Resume Regeneration":
                 if st.button("➕ Add Project", key="add_proj_single"):
                     resume_data["projects"].append({"title": "", "description": "", "link": ""})
                     st.session_state.resume_data = copy.deepcopy(resume_data)
+                    # Increment key suffix to force AgGrid refresh
+                    st.session_state['aggrid_proj_single_key_suffix'] = st.session_state.get('aggrid_proj_single_key_suffix', 0) + 1
                     st.success("Added new project entry.")
                     st.rerun()
                 st.markdown("---")
@@ -1589,6 +1651,8 @@ elif page == "JD-Resume Regeneration":
                 if st.button("➕ Add Skill", key="add_skill_single"):
                     resume_data["skills"].append("")
                     st.session_state.resume_data = copy.deepcopy(resume_data)
+                    # Increment key suffix to force AgGrid refresh
+                    st.session_state['aggrid_skill_single_key_suffix'] = st.session_state.get('aggrid_skill_single_key_suffix', 0) + 1
                     st.success("Added new skill entry.")
                     st.rerun()
                 st.markdown("---")
