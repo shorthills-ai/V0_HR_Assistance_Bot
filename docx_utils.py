@@ -1,6 +1,5 @@
 import base64
 import io
-import json
 from jinja2 import Environment, FileSystemLoader
 from weasyprint import HTML
 import fitz  # PyMuPDF
@@ -17,114 +16,6 @@ from docx.oxml.shared import qn
 from docx.enum.dml import MSO_THEME_COLOR_INDEX
 
 class DocxUtils:
-    @staticmethod
-    def select_top_certifications(certifications, job_keywords=None, candidate_skills=None, max_certs=3):
-        """
-        Use LLM to intelligently select the top 3 most relevant certifications.
-        Returns the most relevant certifications based on job requirements and candidate profile.
-        """
-        if not certifications:
-            return []
-        
-        # If we have 3 or fewer certifications, return them all
-        if len(certifications) <= max_certs:
-            return certifications
-        
-        # Convert job_keywords to list if it's a set
-        if isinstance(job_keywords, set):
-            job_keywords = list(job_keywords)
-        
-        # Prepare certification data for LLM analysis
-        cert_data = []
-        for i, cert in enumerate(certifications):
-            if isinstance(cert, dict):
-                cert_info = {
-                    'index': i,
-                    'title': cert.get('title', ''),
-                    'issuer': cert.get('issuer', cert.get('organization', '')),
-                    'year': cert.get('year', '')
-                }
-            else:
-                cert_info = {
-                    'index': i,
-                    'title': str(cert),
-                    'issuer': '',
-                    'year': ''
-                }
-            cert_data.append(cert_info)
-        
-        # Create LLM prompt for certification selection
-        prompt = f"""You are an expert resume writer and HR professional. Analyze the following certifications and select the TOP 3 most relevant ones for a candidate's resume.
-
-SELECTION CRITERIA:
-1. **Job Relevance**: How well does the certification align with the job keywords/requirements?
-2. **Industry Standard**: Is this a well-recognized, valuable certification in the industry?
-3. **Recency**: More recent certifications are generally more valuable
-4. **Technical Depth**: Does it demonstrate significant technical expertise?
-5. **Career Progression**: Does it show professional development and growth?
-
-RULES:
-- Select exactly 3 certifications (unless fewer than 3 are provided)
-- Prioritize certifications that match job requirements
-- Consider industry standards and recognition
-- If job keywords are not provided, select based on general professional value
-- Return ONLY the indices of the selected certifications as a JSON array
-
-**Job Keywords:** {job_keywords if job_keywords else 'Not specified'}
-**Candidate Skills:** {candidate_skills if candidate_skills else 'Not specified'}
-
-**Available Certifications:**
-{json.dumps(cert_data, indent=2)}
-
-Return only a JSON array of the indices of the top 3 certifications (e.g., [0, 2, 4]):"""
-
-        try:
-            from openai import AzureOpenAI
-            import streamlit as st
-            
-            client = AzureOpenAI(
-                api_key=st.secrets["azure_openai"]["api_key"],
-                api_version=st.secrets["azure_openai"]["api_version"],
-                azure_endpoint=st.secrets["azure_openai"]["endpoint"]
-            )
-            
-            response = client.chat.completions.create(
-                model=st.secrets["azure_openai"]["deployment"],
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.2,
-                response_format={"type": "json_object"}
-            )
-            
-            result = json.loads(response.choices[0].message.content.strip())
-            
-            # Extract indices from the response
-            if isinstance(result, dict) and 'indices' in result:
-                selected_indices = result['indices']
-            elif isinstance(result, list):
-                selected_indices = result
-            else:
-                # Fallback to first 3 if parsing fails
-                selected_indices = list(range(min(max_certs, len(certifications))))
-            
-            # Validate indices and select certifications
-            selected_certs = []
-            for idx in selected_indices:
-                if isinstance(idx, int) and 0 <= idx < len(certifications):
-                    selected_certs.append(certifications[idx])
-            
-            # If we don't have enough selected, fill with remaining certs
-            if len(selected_certs) < max_certs:
-                remaining_indices = [i for i in range(len(certifications)) if i not in selected_indices]
-                for idx in remaining_indices[:max_certs - len(selected_certs)]:
-                    selected_certs.append(certifications[idx])
-            
-            return selected_certs[:max_certs]
-            
-        except Exception as e:
-            print(f"Error selecting top certifications: {e}")
-            # Fallback: return first 3 certifications
-            return certifications[:max_certs]
-
     @staticmethod
     def clean_na_values(data):
         """
@@ -641,27 +532,13 @@ Return only a JSON array of the indices of the top 3 certifications (e.g., [0, 2
         data_copy = copy.deepcopy(data)
         data_copy = DocxUtils.clean_na_values(data_copy)
         
-        # Select top 3 most relevant certifications to prevent overflow
-        if data_copy.get('certifications'):
-            candidate_skills = data_copy.get('skills', [])
-            # Extract keywords from the keywords parameter if available
-            keywords_to_use = set()
-            if keywords:
-                if isinstance(keywords, dict) and 'keywords' in keywords:
-                    keywords_to_use = keywords['keywords']
-                elif isinstance(keywords, (list, set)):
-                    keywords_to_use = set(keywords)
-            
-            data_copy['certifications'] = DocxUtils.select_top_certifications(
-                data_copy['certifications'], 
-                job_keywords=keywords_to_use,
-                candidate_skills=candidate_skills,
-                max_certs=3
-            )
-        
         # Limit skills to prevent left column overflow (max 18 skills for DOCX)
         if data_copy.get('skills') and len(data_copy['skills']) > 18:
             data_copy['skills'] = data_copy['skills'][:18]
+        
+        # Limit certifications to prevent overflow (max 5 certifications)
+        if data_copy.get('certifications') and len(data_copy['certifications']) > 5:
+            data_copy['certifications'] = data_copy['certifications'][:5]
         
         doc = docx.Document()
         
@@ -1050,27 +927,13 @@ Return only a JSON array of the indices of the top 3 certifications (e.g., [0, 2
         data_copy = copy.deepcopy(data) if keywords else data
         data_copy = DocxUtils.clean_na_values(data_copy)
         
-        # Select top 3 most relevant certifications to prevent overflow
-        if data_copy.get('certifications'):
-            candidate_skills = data_copy.get('skills', [])
-            # Extract keywords from the keywords parameter if available
-            keywords_to_use = set()
-            if keywords:
-                if isinstance(keywords, dict) and 'keywords' in keywords:
-                    keywords_to_use = keywords['keywords']
-                elif isinstance(keywords, (list, set)):
-                    keywords_to_use = set(keywords)
-            
-            data_copy['certifications'] = DocxUtils.select_top_certifications(
-                data_copy['certifications'], 
-                job_keywords=keywords_to_use,
-                candidate_skills=candidate_skills,
-                max_certs=3
-            )
-        
         # Limit skills to prevent left column overflow (max 18 skills for DOCX)
         if data_copy.get('skills') and len(data_copy['skills']) > 18:
             data_copy['skills'] = data_copy['skills'][:18]
+        
+        # Limit certifications to prevent overflow (max 5 certifications)
+        if data_copy.get('certifications') and len(data_copy['certifications']) > 5:
+            data_copy['certifications'] = data_copy['certifications'][:5]
         
         # Estimate if we need multiple pages
         content_size = estimate_content_size(data_copy)
