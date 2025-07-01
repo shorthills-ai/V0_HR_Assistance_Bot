@@ -8,6 +8,43 @@ import re
 
 class PDFUtils:
     @staticmethod
+    def clean_na_values(data):
+        """
+        Recursively clean 'NA', 'N/A', empty strings, and None values from resume data.
+        Returns a cleaned copy of the data.
+        """
+        if isinstance(data, dict):
+            cleaned = {}
+            for key, value in data.items():
+                cleaned_value = PDFUtils.clean_na_values(value)
+                # Only include the field if it has a valid value
+                if cleaned_value is not None and cleaned_value != '':
+                    cleaned[key] = cleaned_value
+            return cleaned
+        elif isinstance(data, list):
+            cleaned_list = []
+            for item in data:
+                cleaned_item = PDFUtils.clean_na_values(item)
+                # Only include the item if it's not empty after cleaning
+                if cleaned_item is not None and cleaned_item != '':
+                    if isinstance(cleaned_item, dict) and cleaned_item:  # Non-empty dict
+                        cleaned_list.append(cleaned_item)
+                    elif not isinstance(cleaned_item, dict):  # Non-dict items
+                        cleaned_list.append(cleaned_item)
+            return cleaned_list
+        elif isinstance(data, str):
+            # Clean string values
+            cleaned_str = data.strip()
+            # Filter out various "NA" representations
+            na_values = {'na', 'n/a', 'not applicable', 'not available', 'none', 'null', '-', ''}
+            if cleaned_str.lower() in na_values:
+                return None
+            return cleaned_str
+        else:
+            # Return other types as-is (numbers, booleans, etc.)
+            return data
+
+    @staticmethod
     def get_base64_image(image_path):
         with open(image_path, "rb") as img_file:
             return base64.b64encode(img_file.read()).decode("utf-8")
@@ -201,8 +238,9 @@ class PDFUtils:
             
             return text
 
-        # Create a deep copy to avoid modifying original data
+        # Create a deep copy and clean NA values to avoid modifying original data
         data_copy = copy.deepcopy(data)
+        data_copy = PDFUtils.clean_na_values(data_copy)
         
         # Convert keywords to proper format
         if keywords:
@@ -314,7 +352,7 @@ class PDFUtils:
         continuation_template = env.get_template('templates/template_continuation.html')
 
         # Estimate how many items fit in the left and right columns per page
-        LEFT_COL_MAX = 34  # Total items per page in left column
+        LEFT_COL_MAX = 30  # Total items per page in left column
 
 
         font_size = 13  # Default font size for all pages
@@ -548,8 +586,8 @@ class PDFUtils:
 
         projects = data_copy.get('projects', [])
         # Use different max space for first and subsequent pages
-        max_space_per_page_first = 27
-        max_space_per_page_rest = 28
+        max_space_per_page_first = 25
+        max_space_per_page_rest = 32
         right_chunks, space_remaining, project_numbers_per_page = distribute_projects_to_pages(projects, max_space_per_page_first, max_space_per_page_rest)
 
         # --- Fix: Pad project_numbers_per_page and space_remaining to match right_chunks ---

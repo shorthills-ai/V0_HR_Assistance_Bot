@@ -17,6 +17,43 @@ from docx.enum.dml import MSO_THEME_COLOR_INDEX
 
 class DocxUtils:
     @staticmethod
+    def clean_na_values(data):
+        """
+        Recursively clean 'NA', 'N/A', empty strings, and None values from resume data.
+        Returns a cleaned copy of the data.
+        """
+        if isinstance(data, dict):
+            cleaned = {}
+            for key, value in data.items():
+                cleaned_value = DocxUtils.clean_na_values(value)
+                # Only include the field if it has a valid value
+                if cleaned_value is not None and cleaned_value != '':
+                    cleaned[key] = cleaned_value
+            return cleaned
+        elif isinstance(data, list):
+            cleaned_list = []
+            for item in data:
+                cleaned_item = DocxUtils.clean_na_values(item)
+                # Only include the item if it's not empty after cleaning
+                if cleaned_item is not None and cleaned_item != '':
+                    if isinstance(cleaned_item, dict) and cleaned_item:  # Non-empty dict
+                        cleaned_list.append(cleaned_item)
+                    elif not isinstance(cleaned_item, dict):  # Non-dict items
+                        cleaned_list.append(cleaned_item)
+            return cleaned_list
+        elif isinstance(data, str):
+            # Clean string values
+            cleaned_str = data.strip()
+            # Filter out various "NA" representations
+            na_values = {'na', 'n/a', 'not applicable', 'not available', 'none', 'null', '-', ''}
+            if cleaned_str.lower() in na_values:
+                return None
+            return cleaned_str
+        else:
+            # Return other types as-is (numbers, booleans, etc.)
+            return data
+
+    @staticmethod
     def get_base64_image(image_path):
         with open(image_path, "rb") as img_file:
             return base64.b64encode(img_file.read()).decode("utf-8")
@@ -107,99 +144,300 @@ class DocxUtils:
         return para
 
     @staticmethod
-    def add_page_border(doc):
-        """Add orange border optimized for Microsoft Word"""
-        for section in doc.sections:
-            sectPr = section._sectPr
-            pgBorders = OxmlElement('w:pgBorders')
-            pgBorders.set(qn('w:offsetFrom'), 'page')
-            pgBorders.set(qn('w:display'), 'allPages')  # Word-specific: show on all pages
+    def add_robust_page_border(doc):
+        """Add page border with enhanced compatibility for Word web/desktop and PDF export"""
+        try:
+            for section in doc.sections:
+                sectPr = section._sectPr
+                pgBorders = OxmlElement('w:pgBorders')
+                pgBorders.set(qn('w:offsetFrom'), 'page')
+                pgBorders.set(qn('w:display'), 'allPages')
+                
+                # Add border on all sides with standard settings for better compatibility
+                for border_name in ['top', 'left', 'bottom', 'right']:
+                    border = OxmlElement(f'w:{border_name}')
+                    border.set(qn('w:val'), 'single')
+                    border.set(qn('w:sz'), '6')  # Slightly thicker for better visibility in PDF
+                    border.set(qn('w:space'), '0')  # Closer to page edge for consistency
+                    border.set(qn('w:color'), 'F25D5D')  # Resume red color
+                    pgBorders.append(border)
+                
+                sectPr.append(pgBorders)
+        except Exception as e:
+            print(f"Could not add page border: {e}")
+
+    @staticmethod
+    def create_compatible_table(parent, rows, cols, width_inches=None):
+        """Create a table with enhanced compatibility for Word web/desktop"""
+        try:
+            # Check if parent is a header/footer (which requires width parameter)
+            if hasattr(parent, '_sectPr') or 'header' in str(type(parent)).lower() or 'footer' in str(type(parent)).lower():
+                # Header/footer tables require width parameter
+                if width_inches is None:
+                    width_inches = 8.0  # Default width for headers/footers
+                table = parent.add_table(rows=rows, cols=cols, width=Inches(width_inches))
+            else:
+                # Regular document tables
+                table = parent.add_table(rows=rows, cols=cols)
+        except Exception as e:
+            # Fallback: try with width parameter
+            try:
+                if width_inches is None:
+                    width_inches = 8.0
+                table = parent.add_table(rows=rows, cols=cols, width=Inches(width_inches))
+            except:
+                # Last resort: use basic add_table without parameters
+                table = parent.add_table(rows, cols)
+        
+        # Configure table properties
+        try:
+            table.autofit = False
+            table.allow_autofit = False
+        except:
+            pass  # Some table types might not support these properties
+        
+        # Apply compatible table properties
+        try:
+            tbl = table._tbl
+            tblPr = tbl.tblPr
             
-            # Add border on all sides - optimized for Word rendering
-            for border_name in ['top', 'left', 'bottom', 'right']:
+            # Use fixed layout to maintain column widths during PDF export
+            tblLayout = OxmlElement('w:tblLayout')
+            tblLayout.set(qn('w:type'), 'fixed')
+            tblPr.append(tblLayout)
+        except:
+            pass  # Fallback gracefully
+        
+        return table
+
+    @staticmethod
+    def add_column_border(cell, border_side='right', color='D3D3D3', width='6'):
+        """Add a border to a specific side of a table cell with fallback compatibility"""
+        try:
+            tcPr = cell._tc.get_or_add_tcPr()
+            tcBorders = tcPr.find(qn('w:tcBorders'))
+            if tcBorders is None:
+                tcBorders = OxmlElement('w:tcBorders')
+                tcPr.append(tcBorders)
+            
+            border = OxmlElement(f'w:{border_side}')
+            border.set(qn('w:val'), 'single')
+            border.set(qn('w:sz'), width)  # Border thickness
+            border.set(qn('w:space'), '0')
+            border.set(qn('w:color'), color)
+            tcBorders.append(border)
+        except Exception as e:
+            print(f"Could not add cell border: {e}")
+
+    @staticmethod
+    def remove_all_table_borders(table):
+        """Remove all table borders for seamless layout with better compatibility"""
+        try:
+            tbl = table._tbl
+            tblPr = tbl.tblPr
+            
+            # Remove table borders
+            tblBorders = OxmlElement('w:tblBorders')
+            for border_name in ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']:
                 border = OxmlElement(f'w:{border_name}')
-                border.set(qn('w:val'), 'single')
-                border.set(qn('w:sz'), '4')  # 0.5pt border (4/8ths of a point)
-                border.set(qn('w:space'), '24')  # Use '24' for standard page distance
-                border.set(qn('w:color'), 'F25D5D')  # Match resume's red color
-                border.set(qn('w:themeColor'), 'none')  # Don't use theme colors
-                pgBorders.append(border)
+                border.set(qn('w:val'), 'nil')
+                tblBorders.append(border)
+            tblPr.append(tblBorders)
             
-            sectPr.append(pgBorders)
+            # Remove cell borders
+            for row in table.rows:
+                for cell in row.cells:
+                    try:
+                        tc = cell._tc
+                        tcPr = tc.get_or_add_tcPr()
+                        tcBorders = OxmlElement('w:tcBorders')
+                        for border_name in ['top', 'left', 'bottom', 'right']:
+                            border = OxmlElement(f'w:{border_name}')
+                            border.set(qn('w:val'), 'nil')
+                            tcBorders.append(border)
+                        tcPr.append(tcBorders)
+                    except:
+                        continue  # Skip if border removal fails
+        except Exception as e:
+            print(f"Could not remove table borders: {e}")
 
     @staticmethod
-    def optimize_table_for_word(table):
-        """Optimize table properties specifically for Microsoft Word"""
-        tbl = table._tbl
-        tblPr = tbl.tblPr
-        
-        # Set table layout to fixed for consistent rendering in Word
-        tblLayout = OxmlElement('w:tblLayout')
-        tblLayout.set(qn('w:type'), 'fixed')
-        tblPr.append(tblLayout)
-        
-        # Set table positioning
-        tblpPr = OxmlElement('w:tblpPr')
-        tblpPr.set(qn('w:leftFromText'), '0')
-        tblpPr.set(qn('w:rightFromText'), '0')
-        tblpPr.set(qn('w:vertAnchor'), 'page')
-        tblpPr.set(qn('w:horzAnchor'), 'page')
-        tblPr.append(tblpPr)
-        
-        # Remove table borders for seamless layout
-        DocxUtils.remove_table_borders(table)
+    def set_standard_spacing(paragraph, space_before_pt=0, space_after_pt=0):
+        """Set paragraph spacing using standard methods for better compatibility"""
+        if space_before_pt > 0:
+            paragraph.paragraph_format.space_before = Pt(space_before_pt)
+        if space_after_pt > 0:
+            paragraph.paragraph_format.space_after = Pt(space_after_pt)
 
     @staticmethod
-    def add_word_optimized_spacing(paragraph, space_before=0, space_after=0, line_spacing=1.0):
-        """Add Word-optimized paragraph spacing"""
-        pPr = paragraph._p.get_or_add_pPr()
-        
-        # Set spacing before
-        if space_before > 0:
-            spacingBefore = OxmlElement('w:spacing')
-            spacingBefore.set(qn('w:before'), str(int(space_before * 20)))  # Convert pt to twentieths
-            pPr.append(spacingBefore)
-        
-        # Set spacing after
-        if space_after > 0:
-            spacingAfter = OxmlElement('w:spacing')
-            spacingAfter.set(qn('w:after'), str(int(space_after * 20)))  # Convert pt to twentieths
-            pPr.append(spacingAfter)
-        
-        # Set line spacing for better readability in Word
-        spacing = OxmlElement('w:spacing')
-        spacing.set(qn('w:line'), str(int(line_spacing * 240)))  # 240 = single spacing in Word
-        spacing.set(qn('w:lineRule'), 'auto')
-        pPr.append(spacing)
-
-    @staticmethod
-    def add_word_font_optimization(run, font_name='Montserrat', font_size=10, is_bold=False, color_rgb=None):
-        """Optimize font rendering for Microsoft Word"""
-        # Set font with Word-specific properties
+    def apply_standard_font(run, font_name='Montserrat', font_size_pt=10, is_bold=False, color_rgb=None):
+        """Apply font formatting using standard methods for better compatibility"""
         run.font.name = font_name
-        run.font.size = Pt(font_size)
-        
-        # Add font fallbacks for better Word compatibility
-        rPr = run._r.get_or_add_rPr()
-        
-        # Set font family with fallbacks
-        rFonts = OxmlElement('w:rFonts')
-        rFonts.set(qn('w:ascii'), font_name)
-        rFonts.set(qn('w:hAnsi'), font_name)
-        rFonts.set(qn('w:cs'), font_name)
-        rFonts.set(qn('w:eastAsia'), font_name)
-        rPr.append(rFonts)
-        
-        # Set bold if needed
+        run.font.size = Pt(font_size_pt)
         if is_bold:
             run.bold = True
-            # Add explicit bold for Word
-            bold = OxmlElement('w:b')
-            rPr.append(bold)
-        
-        # Set color if provided
         if color_rgb:
             run.font.color.rgb = color_rgb
+
+    @staticmethod
+    def add_cell_background_compatible(cell, color_hex='F2F2F2'):
+        """Add cell background with enhanced compatibility"""
+        try:
+            shading_elm = OxmlElement('w:shd')
+            shading_elm.set(qn('w:fill'), color_hex)
+            cell._tc.get_or_add_tcPr().append(shading_elm)
+            
+            # Add standard cell margins for consistent spacing
+            tc_pr = cell._tc.get_or_add_tcPr()
+            tc_mar = OxmlElement('w:tcMar')
+            
+            # Set margins using standard values
+            for margin in ['top', 'left', 'bottom', 'right']:
+                mar_elem = OxmlElement(f'w:{margin}')
+                mar_elem.set(qn('w:w'), '144')  # 144 twentieths = 10pt
+                mar_elem.set(qn('w:type'), 'dxa')
+                tc_mar.append(mar_elem)
+            
+            tc_pr.append(tc_mar)
+            return True
+        except Exception as e:
+            print(f"Could not add cell background: {e}")
+            return False
+
+    @staticmethod
+    def create_compatible_footer_table(footer, width_inches=8.5):
+        """Create a footer table with enhanced compatibility"""
+        try:
+            footer_table = footer.add_table(rows=1, cols=1)
+            footer_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+            footer_table.autofit = False
+            
+            # Set table width
+            footer_table.columns[0].width = Inches(width_inches)
+            
+            # Remove borders for seamless appearance
+            DocxUtils.remove_all_table_borders(footer_table)
+            
+            return footer_table
+        except Exception as e:
+            print(f"Could not create footer table: {e}")
+            return None
+    
+    @staticmethod
+    def ensure_table_column_borders(table, column_index=0, border_color='CCCCCC'):
+        """Ensure table has proper column borders for clear separation"""
+        try:
+            if column_index < len(table.columns) - 1:  # Don't add border to last column
+                for row in table.rows:
+                    cell = row.cells[column_index]
+                    DocxUtils.add_column_border(cell, 'right', border_color, '8')
+        except Exception as e:
+            print(f"Could not add column borders: {e}")
+    
+    @staticmethod
+    def set_fixed_column_widths(table, left_width_inches, right_width_inches):
+        """Set fixed column widths that will be maintained during PDF export"""
+        try:
+            # Set precise column widths
+            table.columns[0].width = Inches(left_width_inches)
+            table.columns[1].width = Inches(right_width_inches)
+            
+            # Force fixed table layout
+            tbl = table._tbl
+            tblPr = tbl.tblPr
+            
+            # Ensure fixed layout
+            existing_layout = tblPr.find(qn('w:tblLayout'))
+            if existing_layout is not None:
+                tblPr.remove(existing_layout)
+            
+            tblLayout = OxmlElement('w:tblLayout')
+            tblLayout.set(qn('w:type'), 'fixed')
+            tblPr.append(tblLayout)
+            
+            # Set table width for consistency
+            tblW = OxmlElement('w:tblW')
+            tblW.set(qn('w:w'), str(int((left_width_inches + right_width_inches) * 1440)))  # Convert to twentieths
+            tblW.set(qn('w:type'), 'dxa')
+            tblPr.append(tblW)
+            
+        except Exception as e:
+            print(f"Could not set fixed column widths: {e}")
+
+    @staticmethod
+    def lock_all_table_layouts(doc):
+        """Lock all table layouts to fixed for consistent PDF export"""
+        try:
+            # Find all tables in the document and set them to fixed layout
+            for table in doc.tables:
+                try:
+                    tbl = table._tbl
+                    tblPr = tbl.tblPr
+                    
+                    # Remove existing layout if present
+                    existing_layout = tblPr.find(qn('w:tblLayout'))
+                    if existing_layout is not None:
+                        tblPr.remove(existing_layout)
+                    
+                    # Set to fixed layout
+                    tblLayout = OxmlElement('w:tblLayout')
+                    tblLayout.set(qn('w:type'), 'fixed')
+                    tblPr.append(tblLayout)
+                except:
+                    continue  # Skip if table cannot be processed
+            
+            # Also check header and footer tables
+            for section in doc.sections:
+                try:
+                    # Header tables
+                    if section.header:
+                        for table in section.header.tables:
+                            try:
+                                tbl = table._tbl
+                                tblPr = tbl.tblPr
+                                existing_layout = tblPr.find(qn('w:tblLayout'))
+                                if existing_layout is not None:
+                                    tblPr.remove(existing_layout)
+                                tblLayout = OxmlElement('w:tblLayout')
+                                tblLayout.set(qn('w:type'), 'fixed')
+                                tblPr.append(tblLayout)
+                            except:
+                                continue
+                    
+                    # Footer tables
+                    if section.footer:
+                        for table in section.footer.tables:
+                            try:
+                                tbl = table._tbl
+                                tblPr = tbl.tblPr
+                                existing_layout = tblPr.find(qn('w:tblLayout'))
+                                if existing_layout is not None:
+                                    tblPr.remove(existing_layout)
+                                tblLayout = OxmlElement('w:tblLayout')
+                                tblLayout.set(qn('w:type'), 'fixed')
+                                tblPr.append(tblLayout)
+                            except:
+                                continue
+                except:
+                    continue
+        except Exception as e:
+            print(f"Could not lock table layouts: {e}")
+
+    @staticmethod
+    def optimize_for_pdf_export(doc):
+        """Apply optimizations for better PDF export from Word"""
+        try:
+            # Ensure consistent font embedding and layout
+            for section in doc.sections:
+                # Set print layout optimizations
+                section.different_first_page_header_footer = False
+                section.start_type = WD_SECTION.NEW_PAGE
+                
+                # Ensure consistent page setup
+                section.page_width = Inches(8.5)
+                section.page_height = Inches(11)
+        except Exception as e:
+            print(f"Could not optimize for PDF export: {e}")
 
     @staticmethod
     def add_background_watermark(doc, bg_image_path="templates/bg.png"):
@@ -252,56 +490,36 @@ class DocxUtils:
             print(f"Could not add watermark background: {e}")
             return False
 
+    # Keep old method names for backward compatibility but use new implementations
     @staticmethod
     def add_grey_background(cell):
-        """Add grey background to cell matching PDF template"""
-        try:
-            shading_elm = OxmlElement('w:shd')
-            shading_elm.set(qn('w:fill'), 'F2F2F2')  # #f2f2f2 matching template
-            cell._tc.get_or_add_tcPr().append(shading_elm)
-            
-            # Add padding
-            tc_pr = cell._tc.get_or_add_tcPr()
-            tc_mar = OxmlElement('w:tcMar')
-            
-            # Set margins
-            for margin in ['top', 'left', 'bottom', 'right']:
-                mar_elem = OxmlElement(f'w:{margin}')
-                mar_elem.set(qn('w:w'), '120')  # 120 twentieths of a point (about 8pt)
-                mar_elem.set(qn('w:type'), 'dxa')
-                tc_mar.append(mar_elem)
-            
-            tc_pr.append(tc_mar)
-            return True
-        except Exception as e:
-            print(f"Could not add grey background: {e}")
-            return False
+        """Add grey background to cell - compatibility wrapper"""
+        return DocxUtils.add_cell_background_compatible(cell, 'F2F2F2')
 
     @staticmethod
     def remove_table_borders(table):
-        """Remove all table borders to create seamless layout"""
-        tbl = table._tbl
-        tblPr = tbl.tblPr
-        
-        # Remove table borders
-        tblBorders = OxmlElement('w:tblBorders')
-        for border_name in ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']:
-            border = OxmlElement(f'w:{border_name}')
-            border.set(qn('w:val'), 'nil')
-            tblBorders.append(border)
-        tblPr.append(tblBorders)
-        
-        # Remove cell borders
-        for row in table.rows:
-            for cell in row.cells:
-                tc = cell._tc
-                tcPr = tc.get_or_add_tcPr()
-                tcBorders = OxmlElement('w:tcBorders')
-                for border_name in ['top', 'left', 'bottom', 'right']:
-                    border = OxmlElement(f'w:{border_name}')
-                    border.set(qn('w:val'), 'nil')
-                    tcBorders.append(border)
-                tcPr.append(tcBorders)
+        """Remove table borders - compatibility wrapper"""
+        return DocxUtils.remove_all_table_borders(table)
+    
+    @staticmethod
+    def add_page_border(doc):
+        """Add page border - compatibility wrapper"""
+        return DocxUtils.add_robust_page_border(doc)
+    
+    @staticmethod
+    def optimize_table_for_word(table):
+        """Optimize table for Word - compatibility wrapper"""
+        return DocxUtils.remove_all_table_borders(table)
+    
+    @staticmethod
+    def add_word_optimized_spacing(paragraph, space_before=0, space_after=0, line_spacing=1.0):
+        """Add spacing - compatibility wrapper"""
+        return DocxUtils.set_standard_spacing(paragraph, space_before, space_after)
+    
+    @staticmethod
+    def add_word_font_optimization(run, font_name='Montserrat', font_size=10, is_bold=False, color_rgb=None):
+        """Font optimization - compatibility wrapper"""
+        return DocxUtils.apply_standard_font(run, font_name, font_size, is_bold, color_rgb)
 
     @staticmethod
     def generate_docx(data, keywords=None, left_logo_path="templates/left_logo_small.png", right_logo_path="templates/right_logo_small.png"):
@@ -310,49 +528,52 @@ class DocxUtils:
         Returns a BytesIO object containing the Word file.
         """
 
+        # Create a deep copy and clean NA values
         data_copy = copy.deepcopy(data)
+        data_copy = DocxUtils.clean_na_values(data_copy)
         doc = docx.Document()
         
-        # Set page margins to ZERO to make border go to page edge
+        # Set page margins with small values for compatibility
         sections = doc.sections
         for section in sections:
-            section.top_margin = Inches(0)
-            section.bottom_margin = Inches(0)
-            section.left_margin = Inches(0)
-            section.right_margin = Inches(0)
+            section.top_margin = Inches(0.2)    # Small margin for compatibility
+            section.bottom_margin = Inches(0.2)
+            section.left_margin = Inches(0.2)
+            section.right_margin = Inches(0.2)
             
-            # Set header and footer distances to be minimal but visible
-            section.header_distance = Inches(0.1)
-            section.footer_distance = Inches(0.1)
+            # Set header and footer distances for better compatibility
+            section.header_distance = Inches(0.15)
+            section.footer_distance = Inches(0.15)
             
-            # Word-specific page setup
+            # Standard page setup for better compatibility
             section.page_width = Inches(8.5)   # Standard letter width
             section.page_height = Inches(11)   # Standard letter height
 
-        # Add page border that goes to the edge - optimized for Word
-        DocxUtils.add_page_border(doc)
+        # Add robust page border for better compatibility
+        DocxUtils.add_robust_page_border(doc)
         
         # Skip watermark for now as requested
         # DocxUtils.add_background_watermark(doc)
 
-        # --- HEADER WITH LOGOS (Word-optimized) ---
+        # --- HEADER WITH LOGOS (Compatible design) ---
         header = doc.sections[0].header
         header.is_linked_to_previous = False
         
         # Clear any default header content
         for para in header.paragraphs:
-            p = para._element
-            p.getparent().remove(p)
+            try:
+                p = para._element
+                p.getparent().remove(p)
+            except:
+                para.clear()  # Fallback method
         
-        # Create header table with Word-specific optimization
-        header_table = header.add_table(rows=1, cols=3, width=docx.shared.Inches(8.2))
-        header_table.autofit = False
-        DocxUtils.optimize_table_for_word(header_table)
+        # Create header table with compatible design
+        header_table = DocxUtils.create_compatible_table(header, rows=1, cols=3, width_inches=8.1)
         
-        # Set table to full width
-        header_table.columns[0].width = Inches(2.8)
-        header_table.columns[1].width = Inches(2.6)
-        header_table.columns[2].width = Inches(2.8)
+        # Set column widths for balanced layout (proportional to page)
+        header_table.columns[0].width = Inches(2.7)
+        header_table.columns[1].width = Inches(2.7)
+        header_table.columns[2].width = Inches(2.7)
         
         # Left logo - optimized for Word
         left_cell = header_table.cell(0, 0)
@@ -386,27 +607,14 @@ class DocxUtils:
         # spacing_para = doc.add_paragraph()
         # DocxUtils.add_word_optimized_spacing(spacing_para, space_after=1)
 
-        # --- MAIN CONTENT TABLE (Word-optimized) ---
-        main_table = doc.add_table(rows=1, cols=2)
-        main_table.autofit = False
-        main_table.allow_autofit = False
-        DocxUtils.optimize_table_for_word(main_table)
+        # --- MAIN CONTENT TABLE (Compatible two-column layout) ---
+        main_table = DocxUtils.create_compatible_table(doc, rows=1, cols=2, width_inches=8.1)
         
-        # Add a vertical line separator between columns
-        left_cell_for_border = main_table.cell(0, 0)
-        tcPr = left_cell_for_border._tc.get_or_add_tcPr()
-        tcBorders = OxmlElement('w:tcBorders')
-        right_border = OxmlElement('w:right')
-        right_border.set(qn('w:val'), 'single')
-        right_border.set(qn('w:sz'), '4') # 0.5pt
-        right_border.set(qn('w:space'), '0')
-        right_border.set(qn('w:color'), 'D3D3D3') # Light grey
-        tcBorders.append(right_border)
-        tcPr.append(tcBorders)
+        # Set fixed column widths: 35% left, 65% right (based on 8.1" usable width)
+        DocxUtils.set_fixed_column_widths(main_table, 2.8, 5.3)  # 35% and 65% split
         
-        # Adjust column widths for more space on the left
-        main_table.columns[0].width = Inches(2.9)  # Left column (wider)
-        main_table.columns[1].width = Inches(5.3)  # Right column
+        # Add clear vertical border between columns for better separation
+        DocxUtils.ensure_table_column_borders(main_table, 0, 'CCCCCC')
         
         left_cell = main_table.cell(0, 0)
         right_cell = main_table.cell(0, 1)
@@ -419,12 +627,10 @@ class DocxUtils:
         left_cell_padding = left_cell.add_paragraph()
         left_cell_padding.paragraph_format.left_indent = Pt(12)
 
-        # --- LEFT COLUMN (Word-optimized) ---
+        # --- LEFT COLUMN (Compatible design) ---
         # Name and Title container with grey background
-        name_title_table = left_cell.add_table(rows=2, cols=1)
-        name_title_table.autofit = False
-        name_title_table.columns[0].width = Inches(2.8) # Match column width
-        DocxUtils.optimize_table_for_word(name_title_table)
+        name_title_table = DocxUtils.create_compatible_table(left_cell, rows=2, cols=1, width_inches=2.8)
+        name_title_table.columns[0].width = Inches(2.8)  # Match left column width (35%)
         
         # Name cell - Word optimized
         name_cell = name_title_table.cell(0, 0)
@@ -524,6 +730,9 @@ class DocxUtils:
                 DocxUtils.add_word_font_optimization(arrow_run, 'Montserrat', 11, True, RGBColor(242, 93, 93))
                 
                 if isinstance(cert, dict):
+                    # Track if we have any content to add
+                    has_content = False
+                    
                     # Add certification title
                     if cert.get('title'):
                         title_parts = DocxUtils.clean_html_text(cert['title'])
@@ -531,18 +740,27 @@ class DocxUtils:
                             if text.strip():
                                 title_run = para.add_run(text)
                                 DocxUtils.add_word_font_optimization(title_run, 'Montserrat', 10, is_bold, RGBColor(34, 34, 34))
+                                has_content = True
                     
-                    # Add issuer
-                    if cert.get('issuer'):
+                    # Add issuer (only if we have title or other content)
+                    if cert.get('issuer') and has_content:
                         para.add_run('\n')
                         issuer_parts = DocxUtils.clean_html_text(cert['issuer'])
                         for text, is_bold in issuer_parts:
                             if text.strip():
                                 issuer_run = para.add_run(text)
                                 DocxUtils.add_word_font_optimization(issuer_run, 'Montserrat', 10, True, RGBColor(34, 34, 34))
+                    elif cert.get('issuer') and not has_content:
+                        # If no title but have issuer, add issuer as main content
+                        issuer_parts = DocxUtils.clean_html_text(cert['issuer'])
+                        for text, is_bold in issuer_parts:
+                            if text.strip():
+                                issuer_run = para.add_run(text)
+                                DocxUtils.add_word_font_optimization(issuer_run, 'Montserrat', 10, True, RGBColor(34, 34, 34))
+                                has_content = True
                     
-                    # Add year
-                    if cert.get('year'):
+                    # Add year (only if we have other content)
+                    if cert.get('year') and has_content:
                         year_run = para.add_run(f"\n{cert['year']}")
                         DocxUtils.add_word_font_optimization(year_run, 'Montserrat', 10, False, RGBColor(34, 34, 34))
 
@@ -634,36 +852,37 @@ class DocxUtils:
                                     bullet_run = bullet_para.add_run(text)
                                     DocxUtils.add_word_font_optimization(bullet_run, 'Montserrat', 10, is_bold, RGBColor(34, 34, 34))
         
-        # --- FOOTER (Word-optimized) ---
+        # --- FOOTER (Compatible design) ---
         footer = doc.sections[0].footer
         footer.is_linked_to_previous = False
         
         # Clear any default footer content
         for para in footer.paragraphs:
-            p = para._element
-            p.getparent().remove(p)
+            try:
+                p = para._element
+                p.getparent().remove(p)
+            except:
+                para.clear()  # Fallback method
             
-        # Use a table for a full-width colored band
-        footer_table = footer.add_table(rows=1, cols=1, width=Inches(8.5))
-        footer_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        # Create footer table with compatible design
+        footer_table = DocxUtils.create_compatible_footer_table(footer, 8.0)
+        if footer_table is not None:
+            footer_cell = footer_table.cell(0, 0)
+            
+            # Set cell background color to brand orange
+            DocxUtils.add_cell_background_compatible(footer_cell, 'F25D5D')
+            
+            # Add footer text with proper formatting
+            footer_para = footer_cell.paragraphs[0]
+            footer_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            DocxUtils.set_standard_spacing(footer_para, space_before_pt=6, space_after_pt=6)
+            
+            footer_run = footer_para.add_run("© www.shorthills.ai")
+            DocxUtils.apply_standard_font(footer_run, 'Montserrat', 10, False, RGBColor(255, 255, 255))
         
-        footer_cell = footer_table.cell(0, 0)
-        
-        # Set cell background color to orange
-        shading_elm = OxmlElement('w:shd')
-        shading_elm.set(qn('w:fill'), 'F25D5D')
-        footer_cell._tc.get_or_add_tcPr().append(shading_elm)
-        
-        # Add footer text
-        footer_para = footer_cell.paragraphs[0]
-        footer_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        DocxUtils.add_word_optimized_spacing(footer_para, space_before=4, space_after=4)
-        
-        footer_run = footer_para.add_run("© www.shorthills.ai")
-        DocxUtils.add_word_font_optimization(footer_run, 'Montserrat', 10, False, RGBColor(255, 255, 255))
-        
-        # Remove any borders from the footer table
-        DocxUtils.remove_table_borders(footer_table)
+        # Apply PDF export optimizations and lock column widths
+        DocxUtils.optimize_for_pdf_export(doc)
+        DocxUtils.lock_all_table_layouts(doc)
         
         # Save document to BytesIO
         docx_file = io.BytesIO()
@@ -695,8 +914,9 @@ class DocxUtils:
             
             return size
 
-        # Apply keyword bolding if keywords provided
+        # Apply keyword bolding if keywords provided and clean NA values
         data_copy = copy.deepcopy(data) if keywords else data
+        data_copy = DocxUtils.clean_na_values(data_copy)
         
         # Estimate if we need multiple pages
         content_size = estimate_content_size(data_copy)
@@ -710,20 +930,20 @@ class DocxUtils:
         # Word will handle page breaks automatically with proper styling
         doc = docx.Document()
         
-        # Set page margins to ZERO for edge-to-edge layout
+        # Set page margins with small values for compatibility
         sections = doc.sections
         for section in sections:
-            section.top_margin = Inches(0)
-            section.bottom_margin = Inches(0)
-            section.left_margin = Inches(0)
-            section.right_margin = Inches(0)
+            section.top_margin = Inches(0.2)
+            section.bottom_margin = Inches(0.2)
+            section.left_margin = Inches(0.2)
+            section.right_margin = Inches(0.2)
 
-            # Set header and footer distances
-            section.header_distance = Inches(0)
-            section.footer_distance = Inches(0)
+            # Set header and footer distances for compatibility
+            section.header_distance = Inches(0.15)
+            section.footer_distance = Inches(0.15)
 
-        # Add page border and background to all pages
-        DocxUtils.add_page_border(doc)
+        # Add robust page border for better compatibility
+        DocxUtils.add_robust_page_border(doc)
         # Skip watermark as requested
         # DocxUtils.add_background_watermark(doc)
 
@@ -734,11 +954,10 @@ class DocxUtils:
         for para in header.paragraphs:
             para.clear()
             
-        header_table = header.add_table(rows=1, cols=3, width=docx.shared.Inches(8.0))
-        header_table.autofit = False
-        header_table.columns[0].width = Inches(2.5)
-        header_table.columns[1].width = Inches(3.0)
-        header_table.columns[2].width = Inches(2.5)
+        header_table = DocxUtils.create_compatible_table(header, rows=1, cols=3, width_inches=8.1)
+        header_table.columns[0].width = Inches(2.7)
+        header_table.columns[1].width = Inches(2.7)
+        header_table.columns[2].width = Inches(2.7)
         
         # Left logo
         left_cell = header_table.cell(0, 0)
@@ -771,7 +990,7 @@ class DocxUtils:
             right_run.font.size = Pt(10)
             right_run.font.color.rgb = RGBColor(102, 102, 102)
 
-        DocxUtils.remove_table_borders(header_table)
+        DocxUtils.remove_all_table_borders(header_table)
 
         # For multi-page, use a simplified linear layout instead of complex 2-column
         # This ensures better page breaks and readability
@@ -992,11 +1211,16 @@ class DocxUtils:
                 arrow_run.bold = True
                 
                 if isinstance(cert, dict):
+                    # Track if we have any content to add
+                    has_content = False
+                    
                     if cert.get('title'):
                         title_parts = DocxUtils.clean_html_text(cert['title'])
                         DocxUtils.add_formatted_text(para, title_parts, font_size=12)
+                        has_content = True
                     
-                    if cert.get('issuer'):
+                    # Add issuer (only if we have title or other content)
+                    if cert.get('issuer') and has_content:
                         para.add_run('\n')
                         issuer_parts = DocxUtils.clean_html_text(cert['issuer'])
                         for text, is_bold in issuer_parts:
@@ -1006,8 +1230,20 @@ class DocxUtils:
                                 issuer_run.font.size = Pt(12)
                                 issuer_run.font.color.rgb = RGBColor(34, 34, 34)
                                 issuer_run.bold = True
+                    elif cert.get('issuer') and not has_content:
+                        # If no title but have issuer, add issuer as main content
+                        issuer_parts = DocxUtils.clean_html_text(cert['issuer'])
+                        for text, is_bold in issuer_parts:
+                            if text.strip():
+                                issuer_run = para.add_run(text)
+                                issuer_run.font.name = 'Montserrat'
+                                issuer_run.font.size = Pt(12)
+                                issuer_run.font.color.rgb = RGBColor(34, 34, 34)
+                                issuer_run.bold = True
+                                has_content = True
                     
-                    if cert.get('year'):
+                    # Add year (only if we have other content)
+                    if cert.get('year') and has_content:
                         year_run = para.add_run(f"\n{cert['year']}")
                         year_run.font.name = 'Montserrat'
                         year_run.font.size = Pt(12)
@@ -1016,23 +1252,25 @@ class DocxUtils:
                     cert_parts = DocxUtils.clean_html_text(str(cert))
                     DocxUtils.add_formatted_text(para, cert_parts, font_size=12)
 
-        # Footer that sticks to bottom
+        # Footer with compatible design
         footer = doc.sections[0].footer
         
         # Clear any default footer content
         for para in footer.paragraphs:
             para.clear()
             
-        footer_para = footer.add_paragraph()
-        footer_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        DocxUtils.add_word_optimized_spacing(footer_para, space_before=4, space_after=4)
-        
-        shading_elm = OxmlElement('w:shd')
-        shading_elm.set(qn('w:fill'), 'F25D5D')
-        footer_para._p.get_or_add_pPr().append(shading_elm)
-        
-        footer_run = footer_para.add_run("© www.shorthills.ai")
-        DocxUtils.add_word_font_optimization(footer_run, 'Montserrat', 10, False, RGBColor(255, 255, 255))
+        # Create footer table for consistent background
+        footer_table = DocxUtils.create_compatible_footer_table(footer, 8.0)
+        if footer_table is not None:
+            footer_cell = footer_table.cell(0, 0)
+            DocxUtils.add_cell_background_compatible(footer_cell, 'F25D5D')
+            
+            footer_para = footer_cell.paragraphs[0]
+            footer_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            DocxUtils.set_standard_spacing(footer_para, space_before_pt=6, space_after_pt=6)
+            
+            footer_run = footer_para.add_run("© www.shorthills.ai")
+            DocxUtils.apply_standard_font(footer_run, 'Montserrat', 10, False, RGBColor(255, 255, 255))
 
         # Save document
         docx_file = io.BytesIO()
